@@ -130,4 +130,4 @@ How it fits together:
 - `docker/Web.config` is mounted over the project's Web.config. It is identical except the server is `db` instead of `localhost` and the Windows-only `system.codedom` section is removed. Keep it in sync if the real Web.config changes.
 - `docker/mysql-init/01-schema.sql` creates the two tables the first time the `ocean_mysql_data` volume is created.
 - Uploads made through the app are stored in the MySQL volume and survive restarts. Connect with any MySQL client at localhost:3306 to inspect them.
-- The project folder is bind-mounted, so edits to `.cshtml` views take effect on the next request without a rebuild.
+- The project folder is bind-mounted, so edits to `.cshtml` views need no rebuild, but the app caches compiled views: run `docker compose restart app` to pick them up.
