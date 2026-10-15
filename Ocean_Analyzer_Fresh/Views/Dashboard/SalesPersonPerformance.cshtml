@@ -381,6 +381,8 @@
                 <!-- UNIFIED MASTER FILTER BAR -->
                 @using (Html.BeginForm("SalesPersonPerformance", "Dashboard", FormMethod.Get, new { @class = "filters-row" }))
                 {
+                    <input type="hidden" name="selectedFileStatus" value="@Request.QueryString["selectedFileStatus"]" />
+                    <input type="hidden" name="selectedCreatedBy" value="@Request.QueryString["selectedCreatedBy"]" />
                     <div class="filter-field">
                         <label>Companies</label>
                         @Html.DropDownList("selectedStation", new SelectList(Model.AvailableStations ?? new List<string>(), Model.SelectedStation), "-- All Companies --", new { @id = "selectedStation", @class = "form-select form-select-sm" })
@@ -681,6 +683,10 @@
         // DataTable Initialization
         $('#salesTable').DataTable({ pageLength: 10, scrollX: true });
     });
+    </script>
+    <script>
+        // Carry the current filters (query string) across the sidebar module links.
+        document.querySelectorAll('.nav-group .nav-link').forEach(function (a) { a.search = window.location.search; });
     </script>
 </body>
 </html>

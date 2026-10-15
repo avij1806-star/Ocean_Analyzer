@@ -697,5 +697,9 @@
         $('#userPerformanceTable').DataTable({ pageLength: 10, scrollX: true });
     });
     </script>
+    <script>
+        // Carry the current filters (query string) across the sidebar module links.
+        document.querySelectorAll('.nav-group .nav-link').forEach(function (a) { a.search = window.location.search; });
+    </script>
 </body>
 </html>
