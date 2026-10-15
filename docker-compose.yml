@@ -1,0 +1,32 @@
+# Run Ocean Analyzer on macOS/Linux:  docker compose up -d --build   then open http://localhost:8080/Dashboard/Ocean_Dashboard
+services:
+  db:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: "1234"
+      MYSQL_DATABASE: loadbrd
+    ports:
+      - "3306:3306"
+    volumes:
+      - ocean_mysql_data:/var/lib/mysql
+      - ./docker/mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-uroot", "-p1234", "--silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  app:
+    build: ./docker
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./Ocean_Analyzer_Fresh:/app
+      - ./docker/Web.config:/app/Web.config:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  ocean_mysql_data:
