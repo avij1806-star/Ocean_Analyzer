@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.37301.9
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ocean_Analyzer_Fresh", "Ocean_Analyzer_Fresh\Ocean_Analyzer_Fresh.csproj", "{2F819F0D-BE0A-4D42-B7AA-FC42152B7CB7}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2F819F0D-BE0A-4D42-B7AA-FC42152B7CB7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2F819F0D-BE0A-4D42-B7AA-FC42152B7CB7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2F819F0D-BE0A-4D42-B7AA-FC42152B7CB7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2F819F0D-BE0A-4D42-B7AA-FC42152B7CB7}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {F7AB38DF-4DBB-496B-B879-D49D8F3B3153}
+	EndGlobalSection
+EndGlobal

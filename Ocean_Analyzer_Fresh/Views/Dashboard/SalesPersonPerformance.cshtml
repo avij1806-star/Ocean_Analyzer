@@ -1,0 +1,686 @@
+﻿@model Ocean_Analyzer_Fresh.Models.OceanShipmentDashboardViewModel
+@using System.Data
+
+@{
+    ViewBag.Title = "Sales Person Performance Analysis";
+    Layout = null;
+    decimal profitMargin = Model.TotalPaidRevenue > 0 ? (Model.TotalGrossProfit / Model.TotalPaidRevenue) * 100 : 0;
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewBag.Title</title>
+
+    <!-- Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://api.fontshare.com/v2/css?f[]=general-sans@500,600,700&f[]=satoshi@400,500,700,900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- DataTables CSS -->
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+
+    <style>
+        :root, [data-theme='light'] {
+            --color-bg: #eef2f7;
+            --color-surface: #ffffff;
+            --color-surface-2: #f7f9fc;
+            --color-surface-offset: #e8edf4;
+            --color-border: #d8e0ea;
+            --color-divider: #e3e9f1;
+            --color-text: #0f1a2b;
+            --color-text-muted: #5b6b81;
+            --color-text-faint: #97a5b8;
+            --color-primary: #0e7490;
+            --color-primary-highlight: #d3ebf1;
+            --color-secondary: #2c4a8a;
+            --color-success: #157f4b;
+            --color-error: #b3261e;
+            --color-warning: #a35a09;
+            --radius-md: 0.625rem;
+            --radius-lg: 0.875rem;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
+            --font-display: 'General Sans', sans-serif;
+            --font-body: 'Satoshi', sans-serif;
+        }
+
+        body {
+            background-color: var(--color-bg);
+            font-family: var(--font-body);
+            color: var(--color-text);
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 240px 1fr;
+            height: 100vh;
+            transition: grid-template-columns 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+            .dashboard.sidebar-collapsed {
+                grid-template-columns: 0px 1fr;
+            }
+
+        .sidebar {
+            background: var(--color-surface);
+            border-right: 1px solid var(--color-border);
+            display: flex;
+            flex-direction: column;
+            padding: 1.25rem 1rem;
+            gap: 1.5rem;
+            overflow-y: auto;
+            overflow-x: hidden;
+            white-space: nowrap;
+            transition: opacity 0.2s ease, padding 0.3s ease;
+        }
+
+        .dashboard.sidebar-collapsed .sidebar {
+            opacity: 0;
+            padding: 0;
+            pointer-events: none;
+            border-right: none;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-family: var(--font-display);
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+            .brand svg {
+                width: 32px;
+                height: 32px;
+                color: var(--color-primary);
+                flex-shrink: 0;
+            }
+
+            .brand span {
+                display: block;
+                font-size: 0.75rem;
+                color: var(--color-text-muted);
+                font-weight: 500;
+            }
+
+        .nav-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .nav-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--color-text-faint);
+            font-weight: 700;
+            padding: 0 0.5rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem 0.75rem;
+            border-radius: var(--radius-md);
+            font-size: 0.85rem;
+            color: var(--color-text-muted);
+            font-weight: 500;
+            text-decoration: none;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+            .nav-link:hover, .nav-link.active {
+                background: var(--color-primary-highlight);
+                color: var(--color-primary);
+            }
+
+        .main-col {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            min-width: 0;
+        }
+
+        .topbar {
+            background: var(--color-surface);
+            border-bottom: 1px solid var(--color-border);
+            padding: 1rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            flex-shrink: 0;
+        }
+
+        .topbar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .topbar-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            font-family: var(--font-display);
+        }
+
+        .sidebar-toggle-btn {
+            background: var(--color-surface-offset);
+            border: 1px solid var(--color-border);
+            color: var(--color-text);
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 14px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+            .sidebar-toggle-btn:hover {
+                background: var(--color-primary-highlight);
+                color: var(--color-primary);
+            }
+
+        .filters-row {
+            display: flex;
+            align-items: flex-end;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .filter-field {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+            .filter-field label {
+                font-size: 10px;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                color: #112b4f;
+                font-weight: 700;
+            }
+
+        .form-select, .form-control {
+            border-radius: 8px;
+            border-color: var(--color-border);
+            font-size: 12px;
+            padding: 6px 10px;
+        }
+
+        .main-scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        .section {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .section-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            font-family: var(--font-display);
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .kpi-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .kpi-label {
+            font-size: 0.75rem;
+            color: #091c36;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .kpi-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: var(--font-display);
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+
+        @@media (max-width: 992px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: 1.25rem;
+            box-shadow: var(--shadow-sm);
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .panel-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            font-family: var(--font-display);
+        }
+
+        .chart-wrap {
+            position: relative;
+            height: 280px;
+        }
+
+        .data-table {
+            width: 100%;
+            font-size: 0.8rem;
+            border-collapse: collapse;
+        }
+
+            .data-table th, .data-table td {
+                padding: 0.65rem 0.75rem;
+                border-bottom: 1px solid var(--color-divider);
+                text-align: left;
+                white-space: nowrap;
+            }
+
+            .data-table th {
+                background: var(--color-surface-2);
+                font-weight: 700;
+                color: var(--color-text-muted);
+                font-size: 0.7rem;
+                text-transform: uppercase;
+            }
+
+            .data-table tr:hover td {
+                background: var(--color-surface-offset);
+            }
+
+        .tnum {
+            font-variant-numeric: tabular-nums;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard" id="dashboardLayout">
+        <!-- SIDEBAR NAVIGATION -->
+        <aside class="sidebar" aria-label="Primary navigation">
+            <div class="brand">
+                <svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="currentColor" /><path d="M6 20.5l6-11 6 11M18 20.5l4-7.5 4 7.5" stroke="white" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                <div>Performance Dashboard <span>Laod Access BI</span></div>
+            </div>
+
+            <nav class="nav-group">
+                <div class="nav-label">Modules</div>
+                <a href="@Url.Action("Ocean_Dashboard", "Dashboard")" class="nav-link"><i class="bi bi-grid-1x2-fill"></i> Executive Overview</a>
+                <a href="@Url.Action("ProfitAnalysis", "Dashboard")" class="nav-link"><i class="bi bi-graph-up-arrow"></i> Profit &amp; Loss P&amp;L</a>
+                <a href="@Url.Action("UserPerformance", "Dashboard")" class="nav-link"><i class="bi bi-person-badge-fill"></i> User Productivity</a>
+                <a href="@Url.Action("SalesPersonPerformance", "Dashboard")" class="nav-link active"><i class="bi bi-people-fill"></i> Sales Performance</a>
+                <a href="@Url.Action("StationTradeLane", "Dashboard")" class="nav-link"><i class="bi bi-compass-fill"></i> Company Trade Lanes</a>
+            </nav>
+        </aside>
+
+        <!-- MAIN VIEW AREA -->
+        <div class="main-col">
+            <header class="topbar">
+                <div class="topbar-header">
+                    <div class="d-flex align-items-center gap-3">
+                        <button type="button" id="sidebarToggleBtn" class="sidebar-toggle-btn" title="Expand/Collapse Sidebar">
+                            <i class="bi bi-layout-sidebar"></i>
+                        </button>
+                        <div class="topbar-title">Sales Executive Performance Module</div>
+                    </div>
+                </div>
+
+                <!-- UNIFIED MASTER FILTER BAR -->
+                @using (Html.BeginForm("SalesPersonPerformance", "Dashboard", FormMethod.Get, new { @class = "filters-row" }))
+                {
+                    <div class="filter-field">
+                        <label>Companies</label>
+                        @Html.DropDownList("selectedStation", new SelectList(Model.AvailableStations ?? new List<string>(), Model.SelectedStation), "-- All Companies --", new { @id = "selectedStation", @class = "form-select form-select-sm" })
+                    </div>
+                    <div class="filter-field">
+                        <label>Customer Account</label>
+                        @Html.DropDownList("selectedCustomer", new SelectList(Model.AvailableCustomers ?? new List<string>(), Model.SelectedCustomer), "-- All Customers --", new { @id = "selectedCustomer", @class = "form-select form-select-sm" })
+                    </div>
+                    <div class="filter-field">
+                        <label>Sales Executive</label>
+                        @Html.DropDownList("selectedSalesPerson", new SelectList(Model.AvailableSalesPersons ?? new List<string>(), Model.SelectedSalesPerson), "-- All Sales Persons --", new { @id = "selectedSalesPerson", @class = "form-select form-select-sm" })
+                    </div>
+                    <div class="filter-field">
+                        <label>Date Anchor Basis</label>
+                        <div class="d-flex gap-2 pt-1">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="dateType" id="dateTypeETS" value="ets" @(Model.DateType == "ets" ? "checked" : "")>
+                                <label class="form-check-label small fw-semibold" for="dateTypeETS">ETS</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="dateType" id="dateTypeETA" value="eta" @(Model.DateType == "eta" ? "checked" : "")>
+                                <label class="form-check-label small fw-semibold" for="dateTypeETA">ETA</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="dateType" id="dateTypePosted" value="posted" @(Model.DateType == "posted" ? "checked" : "")>
+                                <label class="form-check-label small fw-semibold" for="dateTypePosted">Posted</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="filter-field">
+                        <label>From Date</label>
+                        <input type="date" name="fromDate" value="@Model.FromDate" class="form-control form-control-sm" />
+                    </div>
+                    <div class="filter-field">
+                        <label>To Date</label>
+                        <input type="date" name="toDate" value="@Model.ToDate" class="form-control form-control-sm" />
+                    </div>
+                    <div class="filter-field" style="justify-content: flex-end;">
+                        <button type="submit" class="btn btn-primary btn-sm px-3 py-1">Apply Filters</button>
+                    </div>
+                }
+            </header>
+
+            <main class="main-scroll" id="mainScroll">
+                <!-- SALES KPIS -->
+                <section class="section">
+                    <div class="section-title">Sales Portfolio Metrics</div>
+                    <div class="kpi-grid">
+                        <div class="kpi-card">
+                            <div class="kpi-label"><i class="bi bi-ship"></i> Managed Shipments</div>
+                            <div class="kpi-value tnum">@Model.TotalShipments.ToString("N0")</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label"><i class="bi bi-wallet2"></i> Expense Outlay</div>
+                            <div class="kpi-value tnum text-danger">$@Model.TotalCost.ToString("N2")</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label"><i class="bi bi-cash-stack"></i> Portfolio Revenue</div>
+                            <div class="kpi-value tnum text-success">$@Model.TotalPaidRevenue.ToString("N2")</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label"><i class="bi bi-star-fill"></i> Gross Return</div>
+                            <div class="kpi-value tnum text-warning">$@Model.TotalGrossProfit.ToString("N2") (@profitMargin.ToString("N1")%)</div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- DUAL VISUALIZATION PANELS -->
+                <section class="section">
+                    <div class="section-title">Sales Performance Insights</div>
+                    <div class="grid-2">
+                        <div class="panel">
+                            <div class="panel-title"><i class="bi bi-bar-chart-fill text-info me-2"></i> Revenue by Executive (In Thousands $)</div>
+                            <div class="chart-wrap"><canvas id="salesBarChart"></canvas></div>
+                        </div>
+                        <div class="panel">
+                            <div class="panel-title"><i class="bi bi-pie-chart-fill text-primary me-2"></i> Top Customers Gross Margin (In Thousands $)</div>
+                            <div class="chart-wrap"><canvas id="customerShareChart"></canvas></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- SALES TRANSACTION LEDGER -->
+                <section class="section">
+                    <div class="panel" style="height: auto;">
+                        <div class="panel-title">Sales Transaction Ledger (@Model.ShipmentData.Rows.Count Records Loaded)</div>
+                        <div style="overflow-x: auto;">
+                            <table class="data-table" id="salesTable">
+                                <thead>
+                                    <tr>
+                                        @foreach (DataColumn col in Model.ShipmentData.Columns)
+                                        {
+                                            <th>@col.ColumnName</th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (DataRow row in Model.ShipmentData.Rows)
+                                    {
+                                        <tr>
+                                            @foreach (var item in row.ItemArray)
+                                            {
+                                                <td>@item.ToString()</td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    <script>
+    document.addEventListener("DOMContentLoaded", function () {
+        Chart.register(ChartDataLabels);
+
+        // Sidebar Toggle Handler
+        const toggleBtn = document.getElementById('sidebarToggleBtn');
+        const dashboardLayout = document.getElementById('dashboardLayout');
+        if (toggleBtn && dashboardLayout) {
+            toggleBtn.addEventListener('click', function () {
+                dashboardLayout.classList.toggle('sidebar-collapsed');
+                setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 300);
+            });
+        }
+
+        // Dynamic Cascading Dropdown Logic (Companies -> Customers & Salespersons)
+        $('#selectedStation').change(function () {
+            var selectedStation = $(this).val();
+            var customerDropdown = $('#selectedCustomer');
+            var salesPersonDropdown = $('#selectedSalesPerson');
+
+            customerDropdown.empty();
+            customerDropdown.append($('<option></option>').val('').text('-- All Customers --'));
+
+            salesPersonDropdown.empty();
+            salesPersonDropdown.append($('<option></option>').val('').text('-- All Sales Persons --'));
+
+            var isAllSelected = !selectedStation || selectedStation === '-- All Companies --' || selectedStation === '-- All Stations --';
+
+            // 1. Fetch Customers via AJAX
+            $.ajax({
+                url: '@Url.Action("GetCustomersByStation", "Dashboard")',
+                type: 'GET',
+                data: { station: isAllSelected ? '' : selectedStation },
+                success: function (customers) {
+                    $.each(customers, function (i, customer) {
+                        customerDropdown.append($('<option></option>').val(customer).text(customer));
+                    });
+                },
+                error: function (xhr, status, error) {
+                    console.error("Failed to fetch customers: " + error);
+                }
+            });
+
+            // 2. Fetch Salespersons via AJAX
+            $.ajax({
+                url: '@Url.Action("GetSalesPersonsByStation", "Dashboard")',
+                type: 'GET',
+                data: { station: isAllSelected ? '' : selectedStation },
+                success: function (salesPersons) {
+                    $.each(salesPersons, function (i, sp) {
+                        salesPersonDropdown.append($('<option></option>').val(sp).text(sp));
+                    });
+                },
+                error: function (xhr, status, error) {
+                    console.error("Failed to fetch salespersons: " + error);
+                }
+            });
+        });
+
+        const salesLabels = @Html.Raw(Json.Encode(Model.ShipmentsBySalesPerson.Keys.ToArray()));
+        const salesCounts = @Html.Raw(Json.Encode(Model.ShipmentsBySalesPerson.Values.ToArray()));
+        const maxSalesVal = salesCounts.length > 0 ? Math.max(...salesCounts) : 100;
+
+        // 1. Revenue by Executive (Vertical Bar Chart with 'k' suffix)
+        new Chart(document.getElementById('salesBarChart').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: salesLabels,
+                datasets: [{
+                    label: 'Revenue Amount ($)',
+                    data: salesCounts,
+                    backgroundColor: '#0e7490',
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: { padding: { top: 25 } },
+                plugins: {
+                    legend: { display: false },
+                    datalabels: {
+                        anchor: 'end',
+                        align: 'top',
+                        font: { size: 10, weight: 'bold' },
+                        color: '#1e293b',
+                        formatter: (value) => value > 0 ? '$' + Number(value).toLocaleString('en-US', {maximumFractionDigits: 0}) + 'k' : ''
+                    }
+                },
+                scales: {
+                    y: { beginAtZero: true, grid: { color: '#f1f5f9' }, suggestedMax: maxSalesVal * 1.25 },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+
+        // 2. Customer Distribution Chart (Dynamic based on Gross Margin with pre-declared variables)
+        @{
+            var customerDict = new Dictionary<string, decimal>();
+            if (Model.ShipmentData != null && Model.ShipmentData.Rows.Count > 0)
+            {
+                string custCol = Model.ShipmentData.Columns.Contains("CUSTNAME") ? "CUSTNAME" : (Model.ShipmentData.Columns.Contains("CUSTOMER") ? "CUSTOMER" : null);
+                string gpCol = Model.ShipmentData.Columns.Contains("ACTUALGP") ? "ACTUALGP" : null;
+                string revCol = Model.ShipmentData.Columns.Contains("AMOUNTINVTOCUST") ? "AMOUNTINVTOCUST" : (Model.ShipmentData.Columns.Contains("PAIDREVENUE") ? "PAIDREVENUE" : null);
+                string costCol = Model.ShipmentData.Columns.Contains("POSTEDCOST") ? "POSTEDCOST" : null;
+
+                if (custCol != null)
+                {
+                    foreach (System.Data.DataRow row in Model.ShipmentData.Rows)
+                    {
+                        string cust = row[custCol]?.ToString() ?? "Unknown";
+                        decimal margin = 0m;
+
+                        if (gpCol != null && row[gpCol] != DBNull.Value)
+                        {
+                            decimal.TryParse(row[gpCol].ToString(), out margin);
+                        }
+                        else if (revCol != null && costCol != null && row[revCol] != DBNull.Value && row[costCol] != DBNull.Value)
+                        {
+                            decimal rev = 0m;
+                            decimal cost = 0m;
+                            decimal.TryParse(row[revCol].ToString(), out rev);
+                            decimal.TryParse(row[costCol].ToString(), out cost);
+                            margin = rev - Math.Abs(cost);
+                        }
+                        else
+                        {
+                            margin = 1m;
+                        }
+
+                        if (customerDict.ContainsKey(cust)) {
+                            customerDict[cust] += margin;
+                        } else {
+                            customerDict[cust] = margin;
+                        }
+                    }
+                }
+            }
+            var topCustomers = customerDict.Where(x => x.Value > 0).OrderByDescending(x => x.Value).Take(6).ToDictionary(x => x.Key, x => x.Value);
+        }
+
+        const customerLabels = @Html.Raw(Json.Encode(topCustomers.Keys.ToArray()));
+        const customerValues = @Html.Raw(Json.Encode(topCustomers.Values.ToArray()));
+
+        new Chart(document.getElementById('customerShareChart').getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: customerLabels.length > 0 ? customerLabels : ['No Data Available'],
+                datasets: [{
+                    data: customerValues.length > 0 ? customerValues : [1],
+                    backgroundColor: ['#0e7490', '#157f4b', '#2c4a8a', '#a35a09', '#b3261e', '#6a4aa3'],
+                    borderWidth: 2,
+                    borderColor: '#ffffff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 9 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.label || '';
+                                let value = context.raw || 0;
+                                return label + ': $' + Number(value).toLocaleString('en-US', {maximumFractionDigits: 0});
+                            }
+                        }
+                    },
+                    datalabels: {
+                        color: '#fff',
+                        font: { weight: 'bold', size: 9 },
+                        formatter: (value) => value > 0 ? '$' + Number(value).toLocaleString('en-US', { maximumFractionDigits: 0 }) + 'k' : ''
+                    }
+                }
+            }
+        });
+
+        // DataTable Initialization
+        $('#salesTable').DataTable({ pageLength: 10, scrollX: true });
+    });
+    </script>
+</body>
+</html>
