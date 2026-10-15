@@ -383,6 +383,10 @@
                 <!-- TRADE LANE FILTER BAR -->
                 @using (Html.BeginForm("StationTradeLane", "Dashboard", FormMethod.Get, new { @class = "filters-row" }))
                 {
+                    <input type="hidden" name="selectedCustomer" value="@Request.QueryString["selectedCustomer"]" />
+                    <input type="hidden" name="selectedFileStatus" value="@Request.QueryString["selectedFileStatus"]" />
+                    <input type="hidden" name="selectedCreatedBy" value="@Request.QueryString["selectedCreatedBy"]" />
+                    <input type="hidden" name="selectedSalesPerson" value="@Request.QueryString["selectedSalesPerson"]" />
                     <div class="filter-field">
                         <label>Company / Station Unit</label>
                         @Html.DropDownList("selectedStation", new SelectList(Model.AvailableStations, Model.SelectedStation), "-- All Companies --", new { @class = "form-select form-select-sm" })
@@ -616,6 +620,10 @@
         $('#stationMarginTable').DataTable({ pageLength: 5, scrollX: true, lengthChange: false });
         $('#stationTable').DataTable({ pageLength: 10, scrollX: true });
     });
+    </script>
+    <script>
+        // Carry the current filters (query string) across the sidebar module links.
+        document.querySelectorAll('.nav-group .nav-link').forEach(function (a) { a.search = window.location.search; });
     </script>
 </body>
 </html>
