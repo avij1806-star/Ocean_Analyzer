@@ -1,0 +1,15 @@
+﻿@model Ocean_Analyzer_Fresh.Models.OceanShipmentDashboardViewModel
+
+@{
+    DateTime parsedFrom, parsedTo;
+    string fromText = DateTime.TryParse(Model.FromDate, out parsedFrom) ? parsedFrom.ToString("dd MMM yyyy") : Model.FromDate;
+    string toText = DateTime.TryParse(Model.ToDate, out parsedTo) ? parsedTo.ToString("dd MMM yyyy") : Model.ToDate;
+    string basis = Model.DateType == "eta" ? "ETA" : Model.DateType == "posted" ? "Posted" : "ETS";
+}
+
+<div class="sidebar-daterange">
+    <div class="sidebar-daterange-label">
+        <i class="bi bi-calendar3"></i> Showing data by <span class="date-trigger-basis">@basis</span>
+    </div>
+    <div class="sidebar-daterange-range">@fromText &ndash; @toText</div>
+</div>

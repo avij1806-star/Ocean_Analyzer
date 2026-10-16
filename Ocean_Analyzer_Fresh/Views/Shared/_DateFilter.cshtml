@@ -1,0 +1,60 @@
+﻿@model Ocean_Analyzer_Fresh.Models.OceanShipmentDashboardViewModel
+
+@{
+    string dateType = string.IsNullOrEmpty(Model.DateType) ? "ets" : Model.DateType;
+    string basis = dateType == "eta" ? "ETA" : dateType == "posted" ? "Posted" : "ETS";
+    DateTime parsedFrom, parsedTo;
+    string rangeText = "Select dates";
+    if (DateTime.TryParse(Model.FromDate, out parsedFrom) && DateTime.TryParse(Model.ToDate, out parsedTo))
+    {
+        rangeText = (parsedFrom.Year == parsedTo.Year ? parsedFrom.ToString("dd MMM") : parsedFrom.ToString("dd MMM yyyy")) + " – " + parsedTo.ToString("dd MMM yyyy");
+    }
+}
+
+<div class="filter-field date-filter" data-date-filter>
+    <label for="dfTrigger">Date Range</label>
+    <button type="button" id="dfTrigger" class="form-select form-select-sm date-trigger" aria-haspopup="dialog" aria-expanded="false" data-date-trigger>
+        <i class="bi bi-calendar3"></i>
+        <span class="date-trigger-basis" data-date-basis-text>@basis</span>
+        <span data-date-range-text>@rangeText</span>
+    </button>
+
+    <div class="date-popover" role="dialog" aria-label="Choose date range" data-date-popover hidden>
+        <div class="date-presets" data-date-presets>
+            <button type="button" data-preset="mtd">Month to date</button>
+            <button type="button" data-preset="lastMonth">Last month</button>
+            <button type="button" data-preset="qtd">Quarter to date</button>
+            <button type="button" data-preset="lastQuarter">Last quarter</button>
+            <button type="button" data-preset="ytd">Year to date</button>
+            <button type="button" data-preset="last30">Last 30 days</button>
+            <button type="button" data-preset="last90">Last 90 days</button>
+            <button type="button" data-preset="last12m">Last 12 months</button>
+        </div>
+        <div class="date-popover-main">
+            <div class="date-popover-label">Filter dates by</div>
+            <div class="date-basis" role="radiogroup" aria-label="Filter dates by">
+                <input type="radio" class="btn-check" name="dateType" id="dfTypeEts" value="ets" @(dateType == "ets" ? "checked" : "")>
+                <label for="dfTypeEts">ETS</label>
+                <input type="radio" class="btn-check" name="dateType" id="dfTypeEta" value="eta" @(dateType == "eta" ? "checked" : "")>
+                <label for="dfTypeEta">ETA</label>
+                <input type="radio" class="btn-check" name="dateType" id="dfTypePosted" value="posted" @(dateType == "posted" ? "checked" : "")>
+                <label for="dfTypePosted">Posted</label>
+            </div>
+            <div class="date-basis-help" data-date-basis-help></div>
+
+            <div class="date-popover-label">Custom range</div>
+            <div class="date-range-inputs">
+                <input type="date" name="fromDate" value="@Model.FromDate" max="@Model.ToDate" class="form-control form-control-sm" aria-label="From date" data-date-from />
+                <i class="bi bi-arrow-right date-range-sep"></i>
+                <input type="date" name="toDate" value="@Model.ToDate" min="@Model.FromDate" class="form-control form-control-sm" aria-label="To date" data-date-to />
+            </div>
+            <div class="date-filter-error" data-date-error hidden>
+                <i class="bi bi-exclamation-circle"></i> From date must be on or before To date.
+            </div>
+
+            <div class="date-popover-footer">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-date-done>Done</button>
+            </div>
+        </div>
+    </div>
+</div>

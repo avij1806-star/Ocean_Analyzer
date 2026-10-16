@@ -1,0 +1,261 @@
+﻿/* Shared filter bar styles for the dashboards: date range field (Views/Shared/_DateFilter.cshtml) and actions. */
+
+/* One control height across the bar so every field lines up. */
+.filters-row .form-select,
+.filters-row .form-control,
+.filters-row .filter-actions .btn {
+    height: 32px;
+}
+
+/* Keep long option text clear of the dropdown chevron, and stop long names stretching the bar. */
+.filters-row .form-select {
+    max-width: 240px;
+    padding-right: 32px;
+    text-overflow: ellipsis;
+}
+
+/* ---- Date range field ---- */
+
+.filters-row .date-filter {
+    position: relative;
+    flex: 0 0 auto;
+}
+
+.date-trigger {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 230px;
+    text-align: left;
+    white-space: nowrap;
+    color: var(--color-text);
+}
+
+    .date-trigger .bi {
+        color: var(--color-text-muted);
+    }
+
+    .date-trigger[aria-expanded="true"] {
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 3px var(--color-primary-highlight);
+    }
+
+.date-trigger-basis {
+    padding: 0 6px;
+    border-radius: 4px;
+    background: var(--color-primary-highlight);
+    color: var(--color-primary);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 18px;
+    text-transform: uppercase;
+}
+
+.date-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 1050;
+    display: flex;
+    width: 470px;
+    max-width: calc(100vw - 32px);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    background: var(--color-surface);
+    box-shadow: 0 12px 32px rgba(15, 26, 43, 0.16);
+    overflow: hidden;
+}
+
+    .date-popover[hidden] {
+        display: none;
+    }
+
+    .date-popover.align-right {
+        left: auto;
+        right: 0;
+    }
+
+.date-presets {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px;
+    min-width: 150px;
+    border-right: 1px solid var(--color-divider);
+    background: var(--color-surface-2);
+}
+
+    .date-presets button {
+        padding: 6px 10px;
+        border: 0;
+        border-radius: 6px;
+        background: none;
+        color: var(--color-text);
+        font-size: 12px;
+        text-align: left;
+    }
+
+        .date-presets button:hover {
+            background: var(--color-surface-offset);
+        }
+
+        .date-presets button.active {
+            background: var(--color-primary-highlight);
+            color: var(--color-primary);
+            font-weight: 600;
+        }
+
+.date-popover-main {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 14px;
+    min-width: 0;
+}
+
+.date-popover-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #112b4f;
+    font-weight: 700;
+}
+
+    .date-popover-label + .date-basis {
+        margin-top: -2px;
+    }
+
+.date-basis {
+    display: flex;
+    padding: 2px;
+    border-radius: 8px;
+    background: var(--color-surface-offset);
+}
+
+    .date-basis label {
+        flex: 1;
+        padding: 4px 0;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        text-align: center;
+        color: var(--color-text-muted);
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.15s, color 0.15s;
+    }
+
+        .date-basis label:hover {
+            color: var(--color-text);
+        }
+
+    .date-basis .btn-check:checked + label {
+        background: var(--color-surface);
+        color: var(--color-primary);
+        box-shadow: 0 1px 2px rgba(15, 26, 43, 0.12);
+    }
+
+    .date-basis .btn-check:focus-visible + label {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 1px;
+    }
+
+.date-basis-help {
+    margin-bottom: 6px;
+    font-size: 11px;
+    color: var(--color-text-muted);
+}
+
+.date-range-inputs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+    .date-range-inputs .form-control {
+        flex: 1;
+        min-width: 0;
+    }
+
+.date-range-sep {
+    color: var(--color-text-faint);
+    font-size: 12px;
+}
+
+.date-filter-error {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-error);
+}
+
+.date-popover-footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: auto;
+    padding-top: 8px;
+}
+
+/* ---- Filter actions (Reset + Apply), pinned to the end of the bar ---- */
+
+.filter-actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+}
+
+    .filter-actions .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 14px;
+    }
+
+.filter-reset {
+    color: var(--color-text-muted);
+    text-decoration: none;
+}
+
+    .filter-reset:hover {
+        color: var(--color-text);
+        text-decoration: underline;
+    }
+
+/* Apply button while the bar matches what the page shows; it turns btn-primary once something changes. */
+.btn.btn-applied {
+    background: var(--color-surface-offset);
+    border-color: var(--color-border);
+    color: var(--color-text-muted);
+}
+
+    .btn.btn-applied:hover {
+        background: var(--color-border);
+        color: var(--color-text);
+    }
+
+/* ---- Applied date range, pinned to the bottom of the sidebar (Views/Shared/_DateRangeLabel.cshtml) ---- */
+
+.sidebar-daterange {
+    margin-top: auto;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-surface-2);
+}
+
+.sidebar-daterange-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--color-text-muted);
+}
+
+.sidebar-daterange-range {
+    margin-top: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+}
