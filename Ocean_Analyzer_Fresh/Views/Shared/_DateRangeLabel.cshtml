@@ -12,4 +12,8 @@
         <i class="bi bi-calendar3"></i> Showing data by <span class="date-trigger-basis">@basis</span>
     </div>
     <div class="sidebar-daterange-range">@fromText &ndash; @toText</div>
+    @if (Model.DataAvailableSince.HasValue)
+    {
+        <div class="sidebar-daterange-since">Data available since @Model.DataAvailableSince.Value.ToString("dd MMM yyyy")</div>
+    }
 </div>

@@ -259,3 +259,11 @@
     font-weight: 600;
     color: var(--color-text);
 }
+
+.sidebar-daterange-since {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--color-divider);
+    font-size: 11px;
+    color: var(--color-text-faint);
+}

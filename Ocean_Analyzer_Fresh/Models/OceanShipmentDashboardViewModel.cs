@@ -25,6 +25,7 @@ namespace Ocean_Analyzer_Fresh.Models
         public string SelectedCustomer { get; set; }
         public string FromDate { get; set; }
         public string ToDate { get; set; }
+        public DateTime? DataAvailableSince { get; set; }
 
         // Available Filter Options
         public List<string> AvailableStations { get; set; } = new List<string>();

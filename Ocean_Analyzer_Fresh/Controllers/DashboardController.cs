@@ -29,6 +29,47 @@ namespace Ocean_Analyzer.Controllers
             END";
         }
 
+        // Earliest date in the data for the chosen date basis (ETS, ETA or Posted). Months holding
+        // under 1% of bookings are skipped so a few stray or mistyped dates don't make the data
+        // look far older than it is. Returns null when nothing can be read.
+        private DateTime? GetDataAvailableSince(string dateType)
+        {
+            string dateColumn = "ETS";
+            string dtLower = dateType?.ToLower();
+            if (dtLower == "eta") dateColumn = "ETA";
+            else if (dtLower == "posted" || dtLower == "dateposted") dateColumn = "DatePosted";
+
+            string parsedDate = $@"COALESCE(
+                STR_TO_DATE(TRIM({dateColumn}), '%m/%d/%Y'),
+                STR_TO_DATE(TRIM({dateColumn}), '%d-%m-%Y'),
+                STR_TO_DATE(TRIM({dateColumn}), '%Y-%m-%d'))";
+
+            string query = $@"
+                SELECT MIN(d.dt)
+                FROM (SELECT {parsedDate} AS dt FROM Ocean_Revenue_Analyzer_New) d
+                JOIN (
+                    SELECT DATE_FORMAT(dt, '%Y-%m') AS ym
+                    FROM (SELECT {parsedDate} AS dt FROM Ocean_Revenue_Analyzer_New) x
+                    WHERE dt IS NOT NULL
+                    GROUP BY ym
+                    HAVING COUNT(*) >= 0.01 * (SELECT COUNT(*) FROM Ocean_Revenue_Analyzer_New)
+                ) m ON DATE_FORMAT(d.dt, '%Y-%m') = m.ym";
+
+            try
+            {
+                using (var conn = new MySqlConnection(connStr))
+                using (var cmd = new MySqlCommand(query, conn))
+                {
+                    conn.Open();
+                    object result = cmd.ExecuteScalar();
+                    if (result != null && result != DBNull.Value) return Convert.ToDateTime(result);
+                }
+            }
+            catch (Exception) { }
+
+            return null;
+        }
+
         [HttpGet]
         public ActionResult Ocean_Dashboard(string viewMode, string selectedStation, string selectedFileStatus, string selectedCustomer, string selectedSalesPerson, string selectedCreatedBy, string fromDate, string toDate, string dateType)
         {
@@ -52,6 +93,7 @@ namespace Ocean_Analyzer.Controllers
                 ToDate = toDate,
                 DateType = string.IsNullOrEmpty(dateType) ? "ets" : dateType
             };
+            model.DataAvailableSince = GetDataAvailableSince(model.DateType);
 
             try
             {
@@ -197,6 +239,7 @@ namespace Ocean_Analyzer.Controllers
                 ToDate = toDate,
                 DateType = string.IsNullOrEmpty(dateType) ? "ets" : dateType
             };
+            model.DataAvailableSince = GetDataAvailableSince(model.DateType);
 
             try
             {
@@ -366,6 +409,7 @@ namespace Ocean_Analyzer.Controllers
                 ToDate = toDate,
                 DateType = string.IsNullOrEmpty(dateType) ? "ets" : dateType
             };
+            model.DataAvailableSince = GetDataAvailableSince(model.DateType);
 
             try
             {
@@ -719,6 +763,7 @@ namespace Ocean_Analyzer.Controllers
                 ToDate = toDate,
                 DateType = string.IsNullOrEmpty(dateType) ? "ets" : dateType
             };
+            model.DataAvailableSince = GetDataAvailableSince(model.DateType);
 
             try
             {
@@ -875,6 +920,7 @@ namespace Ocean_Analyzer.Controllers
                 ToDate = toDate,
                 DateType = string.IsNullOrEmpty(dateType) ? "ets" : dateType
             };
+            model.DataAvailableSince = GetDataAvailableSince(model.DateType);
 
             try
             {
