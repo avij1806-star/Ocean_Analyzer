@@ -1348,6 +1348,257 @@ namespace Ocean_Analyzer.Controllers
         //    }
         //}
 
+        [HttpGet]
+        public ActionResult Trends(string selectedStation = null, string selectedCustomer = null, string selectedSalesPerson = null, string selectedMode = null, string fromDate = null, string toDate = null, string dateType = null, string grain = null)
+        {
+            // Trends need a longer window than the other pages' month-to-date default: the last six months.
+            if (string.IsNullOrEmpty(fromDate) || string.IsNullOrEmpty(toDate))
+            {
+                DateTime now = DateTime.Now;
+                fromDate = string.IsNullOrEmpty(fromDate) ? new DateTime(now.Year, now.Month, 1).AddMonths(-5).ToString("yyyy-MM-dd") : fromDate;
+                toDate = string.IsNullOrEmpty(toDate) ? now.ToString("yyyy-MM-dd") : toDate;
+            }
+
+            var model = new OceanShipmentDashboardViewModel
+            {
+                SelectedStation = selectedStation,
+                SelectedCustomer = selectedCustomer,
+                SelectedSalesPerson = selectedSalesPerson,
+                SelectedMode = selectedMode,
+                FromDate = fromDate,
+                ToDate = toDate,
+                DateType = string.IsNullOrEmpty(dateType) ? "ets" : dateType
+            };
+            model.DataAvailableSince = GetDataAvailableSince(model.DateType);
+
+            DateTime from, to;
+            if (!DateTime.TryParse(fromDate, out from) || !DateTime.TryParse(toDate, out to) || from > to)
+            {
+                ViewBag.ErrorMessage = "Choose a valid date range.";
+                model.Trends = new TrendsData();
+                return View(model);
+            }
+            from = from.Date;
+            to = to.Date;
+
+            // Weekly points for ranges up to about four months, monthly beyond that, unless the user picked one.
+            model.Grain = grain == "week" || grain == "month" ? grain : ((to - from).TotalDays <= 120 ? "week" : "month");
+
+            int days = (int)(to - from).TotalDays + 1;
+            DateTime prevTo = from.AddDays(-1);
+            DateTime prevFrom = prevTo.AddDays(-(days - 1));
+
+            string dateColumn = "ETS";
+            string dtLower = model.DateType.ToLower();
+            if (dtLower == "eta") dateColumn = "ETA";
+            else if (dtLower == "posted" || dtLower == "dateposted") dateColumn = "DatePosted";
+
+            var rows = new List<TrendRow>();
+            try
+            {
+                using (var conn = new MySqlConnection(connStr))
+                {
+                    conn.Open();
+                    LoadDropdownFilters(conn, model);
+
+                    using (var cmd = new MySqlCommand("SELECT DISTINCT TRIM(Mode) FROM Ocean_Revenue_Analyzer_New WHERE Mode IS NOT NULL AND TRIM(Mode) != '' ORDER BY 1", conn))
+                    using (var rdr = cmd.ExecuteReader()) { while (rdr.Read()) model.AvailableModes.Add(rdr.GetString(0)); }
+
+                    var whereClause = new StringBuilder(" WHERE 1=1");
+                    var cmdParams = new List<MySqlParameter>();
+
+                    if (!string.IsNullOrEmpty(selectedStation) && selectedStation != "-- All Stations --" && selectedStation != "-- All Companies --")
+                    {
+                        if (selectedStation == "Gillespie-Munro Canada")
+                            whereClause.Append(" AND UPPER(TRIM(Station)) LIKE '%GILLESPIE-MUNRO%' AND UPPER(TRIM(Station)) != 'GILLESPIE-MUNRO (USA) INC.'");
+                        else if (selectedStation == "Gillespie-Munro USA")
+                            whereClause.Append(" AND UPPER(TRIM(Station)) = 'GILLESPIE-MUNRO (USA) INC.'");
+                        else if (selectedStation == "Gillship Navigation")
+                            whereClause.Append(" AND UPPER(TRIM(Station)) LIKE '%GILLSHIP NAVIGATION%'");
+                        else
+                        {
+                            whereClause.Append($" AND {GetGroupedStationSql("Station")} = @station");
+                            cmdParams.Add(new MySqlParameter("@station", selectedStation));
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(selectedCustomer) && selectedCustomer != "-- All Customers --")
+                    {
+                        whereClause.Append(" AND TRIM(Customer) = @customer");
+                        cmdParams.Add(new MySqlParameter("@customer", selectedCustomer.Trim()));
+                    }
+
+                    if (!string.IsNullOrEmpty(selectedSalesPerson) && selectedSalesPerson != "-- All Sales Persons --")
+                    {
+                        whereClause.Append(" AND TRIM(Salesperson) = @salesPerson");
+                        cmdParams.Add(new MySqlParameter("@salesPerson", selectedSalesPerson.Trim()));
+                    }
+
+                    if (!string.IsNullOrEmpty(selectedMode) && selectedMode != "-- All Modes --")
+                    {
+                        whereClause.Append(" AND TRIM(Mode) = @mode");
+                        cmdParams.Add(new MySqlParameter("@mode", selectedMode.Trim()));
+                    }
+
+                    // Dates are stored as text in several formats, so they are parsed here rather than in SQL.
+                    string query = $@"SELECT TRIM({dateColumn}), {GetGroupedStationSql("Station")}, TRIM(Customer), TRIM(Salesperson), TRIM(Type),
+                        COALESCE(PostedInvoices, 0), ABS(COALESCE(PostedCost, 0))
+                        FROM Ocean_Revenue_Analyzer_New {whereClause}";
+
+                    using (var cmd = new MySqlCommand(query, conn))
+                    {
+                        if (cmdParams.Count > 0) cmd.Parameters.AddRange(cmdParams.ToArray());
+                        using (var rdr = cmd.ExecuteReader())
+                        {
+                            while (rdr.Read())
+                            {
+                                DateTime? date = ParseStoredDate(rdr.IsDBNull(0) ? null : rdr.GetString(0));
+                                if (date == null || date.Value < prevFrom || date.Value > to) continue;
+                                rows.Add(new TrendRow
+                                {
+                                    Date = date.Value,
+                                    Station = rdr.IsDBNull(1) ? "Unassigned" : rdr.GetString(1),
+                                    Customer = rdr.IsDBNull(2) || rdr.GetString(2) == "" ? "Unassigned" : rdr.GetString(2),
+                                    SalesPerson = rdr.IsDBNull(3) || rdr.GetString(3) == "" ? "Unassigned" : rdr.GetString(3),
+                                    Type = rdr.IsDBNull(4) ? "" : rdr.GetString(4),
+                                    Revenue = rdr.GetDecimal(5),
+                                    Cost = rdr.GetDecimal(6)
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ViewBag.ErrorMessage = "Error loading trends: " + ex.Message;
+            }
+
+            model.Trends = BuildTrends(rows, from, to, prevFrom, prevTo, model.Grain);
+            model.Trends.PreviousIncomplete = model.DataAvailableSince.HasValue && prevFrom < model.DataAvailableSince.Value;
+            return View(model);
+        }
+
+        private class TrendRow
+        {
+            public DateTime Date;
+            public string Station, Customer, SalesPerson, Type;
+            public decimal Revenue, Cost;
+        }
+
+        private static readonly string[] StoredDateFormats = { "MM/dd/yyyy", "M/d/yyyy", "dd-MM-yyyy", "d-M-yyyy", "yyyy-MM-dd" };
+
+        private static DateTime? ParseStoredDate(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return null;
+            value = value.Trim();
+            if (value.Length > 10 && value[4] == '-') value = value.Substring(0, 10); // yyyy-MM-dd with a time part
+            DateTime parsed;
+            return DateTime.TryParseExact(value, StoredDateFormats, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out parsed)
+                ? parsed.Date
+                : (DateTime?)null;
+        }
+
+        private static DateTime TrendBucketStart(DateTime date, string grain)
+        {
+            if (grain == "month") return new DateTime(date.Year, date.Month, 1);
+            int sinceMonday = ((int)date.DayOfWeek + 6) % 7;
+            return date.AddDays(-sinceMonday);
+        }
+
+        private TrendsData BuildTrends(List<TrendRow> rows, DateTime from, DateTime to, DateTime prevFrom, DateTime prevTo, string grain)
+        {
+            var data = new TrendsData
+            {
+                Grain = grain,
+                PreviousFrom = prevFrom.ToString("yyyy-MM-dd"),
+                PreviousTo = prevTo.ToString("yyyy-MM-dd")
+            };
+
+            // Buckets covering the selected range; a bucket the range only partly covers is flagged.
+            var bucketIndex = new Dictionary<DateTime, int>();
+            for (DateTime start = TrendBucketStart(from, grain); start <= to; start = grain == "month" ? start.AddMonths(1) : start.AddDays(7))
+            {
+                DateTime end = (grain == "month" ? start.AddMonths(1) : start.AddDays(7)).AddDays(-1);
+                bucketIndex[start] = data.Buckets.Count;
+                data.Buckets.Add(new TrendBucket
+                {
+                    Start = start.ToString("yyyy-MM-dd"),
+                    Label = grain == "month" ? start.ToString("MMM yyyy") : start.ToString("dd MMM"),
+                    Partial = start < from || end > to
+                });
+            }
+            int n = data.Buckets.Count;
+
+            var current = rows.Where(r => r.Date >= from && r.Date <= to).ToList();
+            var previous = rows.Where(r => r.Date >= prevFrom && r.Date <= prevTo).ToList();
+
+            data.Current = Totals(current);
+            data.Previous = Totals(previous);
+
+            List<decimal> PerBucket(IEnumerable<TrendRow> source, Func<TrendRow, decimal> value)
+            {
+                var values = new decimal[n];
+                foreach (var r in source) values[bucketIndex[TrendBucketStart(r.Date, grain)]] += value(r);
+                return values.ToList();
+            }
+
+            data.Revenue = PerBucket(current, r => r.Revenue);
+            data.Cost = PerBucket(current, r => r.Cost);
+            data.Shipments = PerBucket(current, r => 1).Select(v => (int)v).ToList();
+            for (int i = 0; i < n; i++)
+            {
+                decimal gp = data.Revenue[i] - data.Cost[i];
+                data.GrossProfit.Add(gp);
+                data.MarginPct.Add(data.Revenue[i] > 0 ? Math.Round(gp / data.Revenue[i] * 100, 1) : (decimal?)null);
+            }
+
+            // Shipment mix by booking type, in a fixed order so each type keeps its color.
+            foreach (string type in new[] { "Import", "Export", "Domestic", "Other" })
+            {
+                Func<TrendRow, bool> isType = type == "Other"
+                    ? (Func<TrendRow, bool>)(r => !new[] { "IMPORT", "EXPORT", "DOMESTIC" }.Contains(r.Type.ToUpper()))
+                    : (r => r.Type.Equals(type, StringComparison.OrdinalIgnoreCase));
+                var series = new TrendSeries { Name = type, Values = PerBucket(current.Where(isType), r => 1) };
+                if (type != "Other" || series.Values.Any(v => v > 0)) data.ShipmentsByType.Add(series);
+            }
+
+            // Gross profit for the five largest companies by revenue; the rest are combined as "Other".
+            var topCompanies = current.GroupBy(r => r.Station).OrderByDescending(g => g.Sum(r => r.Revenue)).Take(5).Select(g => g.Key).ToList();
+            foreach (string company in topCompanies)
+                data.CompanyGrossProfit.Add(new TrendSeries { Name = company, Values = PerBucket(current.Where(r => r.Station == company), r => r.Revenue - r.Cost) });
+            var otherCompanies = current.Where(r => !topCompanies.Contains(r.Station)).ToList();
+            if (otherCompanies.Count > 0)
+                data.CompanyGrossProfit.Add(new TrendSeries { Name = "Other", Values = PerBucket(otherCompanies, r => r.Revenue - r.Cost) });
+
+            List<TrendEntityRow> EntityRows(Func<TrendRow, string> key)
+            {
+                var prevRevenue = previous.GroupBy(key).ToDictionary(g => g.Key, g => g.Sum(r => r.Revenue));
+                var result = current.GroupBy(key).Select(g => new TrendEntityRow
+                {
+                    Name = g.Key,
+                    Shipments = g.Count(),
+                    Revenue = g.Sum(r => r.Revenue),
+                    Cost = g.Sum(r => r.Cost),
+                    PreviousRevenue = prevRevenue.ContainsKey(g.Key) ? prevRevenue[g.Key] : 0,
+                    RevenueByBucket = PerBucket(g, r => r.Revenue)
+                }).ToList();
+                // Also list anyone who had revenue last period but none in this one.
+                foreach (var gone in prevRevenue.Where(p => p.Value != 0 && !result.Any(r => r.Name == p.Key)))
+                    result.Add(new TrendEntityRow { Name = gone.Key, PreviousRevenue = gone.Value, RevenueByBucket = new decimal[n].ToList() });
+                return result.OrderByDescending(r => r.Revenue).ToList();
+            }
+
+            data.Customers = EntityRows(r => r.Customer);
+            data.SalesPersons = EntityRows(r => r.SalesPerson);
+            return data;
+        }
+
+        private static TrendTotals Totals(List<TrendRow> rows)
+        {
+            return new TrendTotals { Shipments = rows.Count, Revenue = rows.Sum(r => r.Revenue), Cost = rows.Sum(r => r.Cost) };
+        }
+
         private void LoadDropdownFilters(MySqlConnection conn, OceanShipmentDashboardViewModel model)
         {
             using (var cmd = new MySqlCommand($"SELECT DISTINCT {GetGroupedStationSql("Station")} AS StationName FROM Ocean_Revenue_Analyzer_New WHERE Station IS NOT NULL AND Station != '' ORDER BY StationName", conn))
