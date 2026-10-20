@@ -1719,16 +1719,29 @@ namespace Ocean_Analyzer.Controllers
                             }
                         }
 
-                        // 3. Synchronize Date Posted
+                        // 3. Synchronize Date Posted: the latest posting date per booking. DatePosted is stored as
+                        // text, so compare it as a date (a plain MAX would rank 12/10/2025 above 05/04/2026).
                         string updateQuery = @"
                 UPDATE Ocean_Revenue_Analyzer_New m
                 JOIN (
-                    SELECT BookingNo, MAX(DatePosted) as DatePosted 
+                    SELECT BookingNo, DATE_FORMAT(MAX(COALESCE(
+                        STR_TO_DATE(TRIM(DatePosted), '%m/%d/%Y'),
+                        STR_TO_DATE(TRIM(DatePosted), '%d-%m-%Y'),
+                        STR_TO_DATE(TRIM(DatePosted), '%Y-%m-%d'))), '%m/%d/%Y') as DatePosted 
                     FROM Ocean_Detail_Dates 
                     WHERE DatePosted IS NOT NULL AND DatePosted != '' 
                     GROUP BY BookingNo
                 ) d ON m.BookingNo = d.BookingNo
-                SET m.DatePosted = d.DatePosted;";
+                SET m.DatePosted = d.DatePosted
+                WHERE d.DatePosted IS NOT NULL;";
+
+                        // Strict mode turns STR_TO_DATE failures on blank or odd dates into errors inside an UPDATE.
+                        // Relax it on this upload's own connection so those dates are skipped, as the dashboard
+                        // queries already do.
+                        using (var cmdMode = new MySqlCommand("SET SESSION sql_mode = REPLACE(REPLACE(@@SESSION.sql_mode, 'STRICT_TRANS_TABLES', ''), 'STRICT_ALL_TABLES', '')", conn))
+                        {
+                            cmdMode.ExecuteNonQuery();
+                        }
 
                         using (var cmdUpdate = new MySqlCommand(updateQuery, conn))
                         {
