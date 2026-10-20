@@ -126,7 +126,11 @@ docker compose down -v            # remove everything including the database
 How it fits together:
 
 - `docker-compose.yml` defines `db` (MySQL, root/1234, database `loadbrd`, published on localhost:3306) and `app` (Mono + XSP on port 8080).
-- `docker/Dockerfile` builds the hosting image. No compilation happens; the committed `Ocean_Analyzer_Fresh/bin` output is served, so C# changes still need a Windows build.
+- `docker/Dockerfile` builds the hosting image. No compilation happens; the committed `Ocean_Analyzer_Fresh/bin` output is served, so C# changes need a rebuild. Without Visual Studio, build with Mono in a throwaway container and copy the DLL into `bin`, then `docker compose restart app`:
+
+  ```
+  docker run --rm -v "$PWD":/src ocean_analyzer_fresh2-app sh -c 'mkdir /work && cp -r /src/Ocean_Analyzer_Fresh /src/packages /work/ && cd /work/Ocean_Analyzer_Fresh && msbuild /nologo /v:minimal /p:OutDir=/tmp/build/ && cp /tmp/build/Ocean_Analyzer_Fresh.dll /tmp/build/Ocean_Analyzer_Fresh.pdb /src/Ocean_Analyzer_Fresh/bin/'
+  ```
 - `docker/Web.config` is mounted over the project's Web.config. It is identical except the server is `db` instead of `localhost` and the Windows-only `system.codedom` section is removed. Keep it in sync if the real Web.config changes.
 - `docker/mysql-init/01-schema.sql` creates the two tables the first time the `ocean_mysql_data` volume is created.
 - Uploads made through the app are stored in the MySQL volume and survive restarts. Connect with any MySQL client at localhost:3306 to inspect them.
