@@ -30,6 +30,34 @@
         return new HtmlString("<span class=\"delta delta-flat\" title=\"The previous period starts before the earliest data\">No earlier data to compare</span>");
     }
 
+    static decimal Median(IEnumerable<decimal> values)
+    {
+        var sorted = values.OrderBy(v => v).ToList();
+        if (sorted.Count == 0) return 0;
+        int mid = sorted.Count / 2;
+        return sorted.Count % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    }
+
+    static decimal Mean(IEnumerable<decimal> values)
+    {
+        var list = values.ToList();
+        return list.Count == 0 ? 0 : list.Average();
+    }
+
+    static string SignedMoney(decimal v)
+    {
+        return (v > 0 ? "+" : "") + Money(v);
+    }
+
+    // Marker beside a value showing whether it is above or below the team median.
+    static IHtmlString VsMedian(bool show, decimal value, decimal median, string medianText)
+    {
+        if (!show || value == median) return new HtmlString("");
+        bool above = value > median;
+        string text = (above ? "Above" : "Below") + " team median (" + HttpUtility.HtmlEncode(medianText) + ")";
+        return new HtmlString("<i class=\"bi " + (above ? "bi-caret-up-fill vs-up" : "bi-caret-down-fill vs-down") + " vs-median\" title=\"" + text + "\" aria-label=\"" + text + "\"></i>");
+    }
+
     // Small inline trend line: de-emphasised stroke, latest point in the accent color.
     static IHtmlString Spark(IList<decimal> values, int width, int height)
     {
@@ -564,6 +592,30 @@
                 padding: 0 12px;
             }
 
+        .data-table thead tr.bench-row td {
+            background: var(--color-primary-highlight);
+            color: var(--color-text);
+            font-weight: 700;
+            font-size: 0.8rem;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .bench-n {
+            font-weight: 500;
+            font-size: 0.72rem;
+            color: var(--color-text-muted);
+            margin-left: 4px;
+        }
+
+        .vs-median {
+            font-size: 0.6rem;
+            margin-left: 4px;
+            vertical-align: 1px;
+        }
+
+        .vs-up { color: var(--color-success); }
+        .vs-down { color: var(--color-error); }
+
         [hidden] {
             display: none !important;
         }
@@ -748,9 +800,18 @@
                 <!-- CUSTOMERS & SALES TAB -->
                 <section class="section" id="tabCustomers" role="tabpanel" aria-labelledby="tabBtnCustomers" hidden>
                     @foreach (var table in new[] {
-                        new { Id = "customerTable", Title = "Customers", Icon = "bi-person-vcard", Rows = T.Customers, Action = "ProfitAnalysis", Param = "selectedCustomer" },
-                        new { Id = "salesTable", Title = "Salespeople", Icon = "bi-people-fill", Rows = T.SalesPersons, Action = "SalesPersonPerformance", Param = "selectedSalesPerson" } })
+                        new { Id = "customerTable", Title = "Customers", Icon = "bi-person-vcard", Rows = T.Customers, Action = "ProfitAnalysis", Param = "selectedCustomer", Bench = false },
+                        new { Id = "salesTable", Title = "Salespeople", Icon = "bi-people-fill", Rows = T.SalesPersons, Action = "SalesPersonPerformance", Param = "selectedSalesPerson", Bench = true } })
                     {
+                        // Team benchmark: salespeople with shipments this period, leaving out "Unassigned".
+                        var peers = table.Rows.Where(x => x.Shipments > 0 && x.Name != "Unassigned").ToList();
+                        bool bench = table.Bench && peers.Count > 1;
+                        var peerMargins = peers.Where(x => x.Revenue > 0).Select(x => x.GrossProfit / x.Revenue * 100).ToList();
+                        decimal medShipments = Median(peers.Select(x => (decimal)x.Shipments));
+                        decimal medRevenue = Median(peers.Select(x => x.Revenue));
+                        decimal medChange = Median(peers.Select(x => x.Revenue - x.PreviousRevenue));
+                        decimal medGp = Median(peers.Select(x => x.GrossProfit));
+                        decimal medMargin = Median(peerMargins);
                         <div class="panel">
                             <div class="panel-head">
                                 <div class="panel-title"><i class="bi @table.Icon me-2"></i>@table.Title <span class="panel-sub">revenue vs previous period</span></div>
@@ -773,6 +834,26 @@
                                         <th class="num">Margin</th>
                                         <th>Revenue trend</th>
                                     </tr>
+                                    @if (bench)
+                                    {
+                                        foreach (var row in new[] {
+                                            new { Label = "Team average", Ship = Mean(peers.Select(x => (decimal)x.Shipments)).ToString("N1"), Rev = Money(Mean(peers.Select(x => x.Revenue))), Chg = SignedMoney(Mean(peers.Select(x => x.Revenue - x.PreviousRevenue))), Gp = Money(Mean(peers.Select(x => x.GrossProfit))), Margin = Mean(peerMargins).ToString("0.0") + "%" },
+                                            new { Label = "Team median", Ship = medShipments.ToString("N0"), Rev = Money(medRevenue), Chg = SignedMoney(medChange), Gp = Money(medGp), Margin = medMargin.ToString("0.0") + "%" } })
+                                        {
+                                            <tr class="bench-row">
+                                                <td>@row.Label <span class="bench-n">across @peers.Count salespeople</span></td>
+                                                <td class="num">@row.Ship</td>
+                                                <td class="num">@row.Rev</td>
+                                                @if (compare)
+                                                {
+                                                    <td class="num">@row.Chg</td>
+                                                }
+                                                <td class="num">@row.Gp</td>
+                                                <td class="num">@row.Margin</td>
+                                                <td></td>
+                                            </tr>
+                                        }
+                                    }
                                 </thead>
                                 <tbody>
                                     @foreach (var r in table.Rows.Where(x => compare || x.Shipments > 0))
@@ -780,8 +861,8 @@
                                         decimal change = r.Revenue - r.PreviousRevenue;
                                         <tr>
                                             <td><a class="entity-link" href="@Url.Action(table.Action, "Dashboard")?@(table.Param)=@Url.Encode(r.Name)@dateQuery">@r.Name</a></td>
-                                            <td class="num" data-order="@r.Shipments">@r.Shipments.ToString("N0")</td>
-                                            <td class="num" data-order="@r.Revenue">@Money(r.Revenue)</td>
+                                            <td class="num" data-order="@r.Shipments">@r.Shipments.ToString("N0")@VsMedian(bench && r.Shipments > 0, r.Shipments, medShipments, medShipments.ToString("N0"))</td>
+                                            <td class="num" data-order="@r.Revenue">@Money(r.Revenue)@VsMedian(bench && r.Shipments > 0, r.Revenue, medRevenue, Money(medRevenue))</td>
                                             @if (compare)
                                             {
                                             <td class="num" data-order="@change">
@@ -799,13 +880,17 @@
                                                 }
                                             </td>
                                             }
-                                            <td class="num" data-order="@r.GrossProfit">@Money(r.GrossProfit)</td>
-                                            <td class="num" data-order="@(r.Revenue > 0 ? r.GrossProfit / r.Revenue * 100 : 0)">@(r.Revenue > 0 ? (r.GrossProfit / r.Revenue * 100).ToString("0.0") + "%" : "–")</td>
+                                            <td class="num" data-order="@r.GrossProfit">@Money(r.GrossProfit)@VsMedian(bench && r.Shipments > 0, r.GrossProfit, medGp, Money(medGp))</td>
+                                            <td class="num" data-order="@(r.Revenue > 0 ? r.GrossProfit / r.Revenue * 100 : 0)">@(r.Revenue > 0 ? (r.GrossProfit / r.Revenue * 100).ToString("0.0") + "%" : "–")@VsMedian(bench && r.Revenue > 0, r.Revenue > 0 ? r.GrossProfit / r.Revenue * 100 : 0, medMargin, medMargin.ToString("0.0") + "%")</td>
                                             <td>@Spark(r.RevenueByBucket, 96, 24)</td>
                                         </tr>
                                     }
                                 </tbody>
                             </table>
+                            @if (bench)
+                            {
+                                <p class="trend-note"><i class="bi bi-caret-up-fill vs-up"></i><i class="bi bi-caret-down-fill vs-down me-1"></i>Above or below the team median. Team figures cover salespeople with shipments in this period and leave out "Unassigned"; margin averages each salesperson's margin.</p>
+                            }
                         </div>
                     }
                 </section>
@@ -1056,7 +1141,7 @@
             document.getElementById('tabBtnCustomers').setAttribute('aria-selected', !business);
             if (!business && !tables.customerTable) {
                 ['customerTable', 'salesTable'].forEach(function (id) {
-                    tables[id] = $('#' + id).DataTable({ pageLength: 10, order: [[2, 'desc']], columnDefs: [{ targets: -1, orderable: false }] });
+                    tables[id] = $('#' + id).DataTable({ pageLength: 10, orderCellsTop: true, order: [[2, 'desc']], columnDefs: [{ targets: -1, orderable: false }] });
                 });
             }
             try { localStorage.setItem('trendsTab', which); } catch (e) { }
