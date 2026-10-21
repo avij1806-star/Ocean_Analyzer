@@ -44,6 +44,37 @@
         return list.Count == 0 ? 0 : list.Average();
     }
 
+    // Volumes and weights: whole numbers once they are large, one decimal below 100.
+    static string Qty(decimal v)
+    {
+        return Math.Abs(v) >= 100 ? v.ToString("N0") : v.ToString("N1");
+    }
+
+    // Below this share of shipments with a CBM value, revenue per CBM is shown faded as unreliable.
+    const decimal MinCbmCoverage = 50;
+
+    static IHtmlString CbmCell(Ocean_Analyzer_Fresh.Models.TrendVolume v)
+    {
+        if (v.Shipments == 0) return new HtmlString("–");
+        if (v.CbmShipments == 0) return new HtmlString("<span class=\"vol-missing\" title=\"No shipment in this period has a CBM value\">Not recorded</span>");
+        return new HtmlString(Qty(v.Cbm));
+    }
+
+    // Second line under a CBM value when only part of the shipments were measured.
+    static IHtmlString CbmCoverage(Ocean_Analyzer_Fresh.Models.TrendVolume v)
+    {
+        if (v.CbmShipments == 0 || v.CbmCoveragePct >= 95) return new HtmlString("");
+        return new HtmlString("<span class=\"vol-cov\" title=\"CBM recorded on " + v.CbmShipments + " of " + v.Shipments + " shipments\">" + v.CbmCoveragePct.ToString("0") + "% of shipments</span>");
+    }
+
+    static IHtmlString RevPerCbmCell(Ocean_Analyzer_Fresh.Models.TrendVolume v)
+    {
+        if (!v.RevenuePerCbm.HasValue) return new HtmlString("–");
+        string text = "$" + v.RevenuePerCbm.Value.ToString("N0");
+        if (v.CbmCoveragePct >= MinCbmCoverage) return new HtmlString(text);
+        return new HtmlString("<span class=\"vol-weak\" title=\"Based on only " + v.CbmShipments + " of " + v.Shipments + " shipments\">" + text + "</span>");
+    }
+
     static string SignedMoney(decimal v)
     {
         return (v > 0 ? "+" : "") + Money(v);
@@ -604,7 +635,7 @@
             font-weight: 500;
             font-size: 0.72rem;
             color: var(--color-text-muted);
-            margin-left: 4px;
+            display: block;
         }
 
         .vs-median {
@@ -614,6 +645,60 @@
         }
 
         .vs-up { color: var(--color-success); }
+
+        .table-scroll {
+            overflow-x: auto;
+        }
+
+        .dt-top,
+        .dt-bottom {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+        }
+
+        /* Long customer names wrap so the volume columns fit without scrolling on a laptop screen. */
+        #customerTable td:first-child,
+        #salesTable td:first-child {
+            white-space: normal;
+            min-width: 140px;
+            max-width: 220px;
+        }
+
+        #customerTable td,
+        #salesTable td {
+            padding-left: 0.6rem;
+            padding-right: 0.6rem;
+        }
+
+        .kpi-sub {
+            font-size: 0.72rem;
+            color: var(--color-text-muted);
+            margin-top: -0.35rem;
+        }
+
+        .data-table td.num {
+            white-space: nowrap;
+        }
+
+        .vol-cov {
+            display: block;
+            font-size: 0.68rem;
+            color: var(--color-text-muted);
+            font-weight: 500;
+        }
+
+        .vol-missing,
+        .vol-weak {
+            color: var(--color-text-muted);
+        }
+
+        .vol-weak {
+            text-decoration: underline dotted;
+            text-underline-offset: 3px;
+        }
         .vs-down { color: var(--color-error); }
 
         [hidden] {
@@ -751,6 +836,14 @@
                                 @Spark(T.MarginPct.Where(v => v.HasValue).Select(v => v.Value).ToList(), 110, 30)
                             </div>
                         </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label"><i class="bi bi-boxes"></i> Volume (CBM)</div>
+                            <div class="kpi-value" title="@cur.Cbm.ToString("N2") CBM">@Qty(cur.Cbm)</div>
+                            <div class="kpi-sub" title="CBM recorded on @cur.CbmShipments of @cur.Shipments shipments. Full-container exports are mostly recorded by weight only.">
+                                @cur.CbmCoveragePct.ToString("0")% of shipments measured · @Qty(cur.Tonnes) t
+                            </div>
+                            <div class="kpi-foot">@(compare ? Delta(cur.Cbm, prev.Cbm, false) : NoCompare()) @Spark(T.Cbm, 110, 30)</div>
+                        </div>
                     </div>
                 </section>
 
@@ -812,6 +905,10 @@
                         decimal medChange = Median(peers.Select(x => x.Revenue - x.PreviousRevenue));
                         decimal medGp = Median(peers.Select(x => x.GrossProfit));
                         decimal medMargin = Median(peerMargins);
+                        var peerRevPerCbm = peers.Where(x => x.RevenuePerCbm.HasValue && x.CbmCoveragePct >= MinCbmCoverage).Select(x => x.RevenuePerCbm.Value).ToList();
+                        decimal medCbm = Median(peers.Select(x => x.Cbm));
+                        decimal medTonnes = Median(peers.Select(x => x.Tonnes));
+                        decimal medRevPerCbm = Median(peerRevPerCbm);
                         <div class="panel">
                             <div class="panel-head">
                                 <div class="panel-title"><i class="bi @table.Icon me-2"></i>@table.Title <span class="panel-sub">revenue vs previous period</span></div>
@@ -832,13 +929,16 @@
                                         }
                                         <th class="num">Gross profit</th>
                                         <th class="num">Margin</th>
-                                        <th>Revenue trend</th>
+                                        <th class="num" title="Cubic metres shipped">CBM</th>
+                                        <th class="num" title="Weight shipped, in metric tonnes">Tonnes</th>
+                                        <th class="num" title="Revenue of the shipments that have a CBM value, divided by their CBM">Rev / CBM</th>
+                                        <th title="Revenue per period">Trend</th>
                                     </tr>
                                     @if (bench)
                                     {
                                         foreach (var row in new[] {
-                                            new { Label = "Team average", Ship = Mean(peers.Select(x => (decimal)x.Shipments)).ToString("N1"), Rev = Money(Mean(peers.Select(x => x.Revenue))), Chg = SignedMoney(Mean(peers.Select(x => x.Revenue - x.PreviousRevenue))), Gp = Money(Mean(peers.Select(x => x.GrossProfit))), Margin = Mean(peerMargins).ToString("0.0") + "%" },
-                                            new { Label = "Team median", Ship = medShipments.ToString("N0"), Rev = Money(medRevenue), Chg = SignedMoney(medChange), Gp = Money(medGp), Margin = medMargin.ToString("0.0") + "%" } })
+                                            new { Label = "Team average", Ship = Mean(peers.Select(x => (decimal)x.Shipments)).ToString("N1"), Rev = Money(Mean(peers.Select(x => x.Revenue))), Chg = SignedMoney(Mean(peers.Select(x => x.Revenue - x.PreviousRevenue))), Gp = Money(Mean(peers.Select(x => x.GrossProfit))), Margin = Mean(peerMargins).ToString("0.0") + "%", Cbm = Qty(Mean(peers.Select(x => x.Cbm))), Tonnes = Qty(Mean(peers.Select(x => x.Tonnes))), RevCbm = peerRevPerCbm.Count > 0 ? "$" + Mean(peerRevPerCbm).ToString("N0") : "–" },
+                                            new { Label = "Team median", Ship = medShipments.ToString("N0"), Rev = Money(medRevenue), Chg = SignedMoney(medChange), Gp = Money(medGp), Margin = medMargin.ToString("0.0") + "%", Cbm = Qty(medCbm), Tonnes = Qty(medTonnes), RevCbm = peerRevPerCbm.Count > 0 ? "$" + medRevPerCbm.ToString("N0") : "–" } })
                                         {
                                             <tr class="bench-row">
                                                 <td>@row.Label <span class="bench-n">across @peers.Count salespeople</span></td>
@@ -850,6 +950,9 @@
                                                 }
                                                 <td class="num">@row.Gp</td>
                                                 <td class="num">@row.Margin</td>
+                                                <td class="num">@row.Cbm</td>
+                                                <td class="num">@row.Tonnes</td>
+                                                <td class="num">@row.RevCbm</td>
                                                 <td></td>
                                             </tr>
                                         }
@@ -882,14 +985,17 @@
                                             }
                                             <td class="num" data-order="@r.GrossProfit">@Money(r.GrossProfit)@VsMedian(bench && r.Shipments > 0, r.GrossProfit, medGp, Money(medGp))</td>
                                             <td class="num" data-order="@(r.Revenue > 0 ? r.GrossProfit / r.Revenue * 100 : 0)">@(r.Revenue > 0 ? (r.GrossProfit / r.Revenue * 100).ToString("0.0") + "%" : "–")@VsMedian(bench && r.Revenue > 0, r.Revenue > 0 ? r.GrossProfit / r.Revenue * 100 : 0, medMargin, medMargin.ToString("0.0") + "%")</td>
-                                            <td>@Spark(r.RevenueByBucket, 96, 24)</td>
+                                            <td class="num" data-order="@r.Cbm">@CbmCell(r)@VsMedian(bench && r.CbmShipments > 0, r.Cbm, medCbm, Qty(medCbm))@CbmCoverage(r)</td>
+                                            <td class="num" data-order="@r.Tonnes">@(r.WeightKg > 0 ? Qty(r.Tonnes) : "–")@VsMedian(bench && r.WeightKg > 0, r.Tonnes, medTonnes, Qty(medTonnes))</td>
+                                            <td class="num" data-order="@(r.RevenuePerCbm ?? 0)">@RevPerCbmCell(r)@VsMedian(bench && peerRevPerCbm.Count > 1 && r.RevenuePerCbm.HasValue && r.CbmCoveragePct >= MinCbmCoverage, r.RevenuePerCbm ?? 0, medRevPerCbm, "$" + medRevPerCbm.ToString("N0"))</td>
+                                            <td>@Spark(r.RevenueByBucket, 80, 24)</td>
                                         </tr>
                                     }
                                 </tbody>
                             </table>
                             @if (bench)
                             {
-                                <p class="trend-note"><i class="bi bi-caret-up-fill vs-up"></i><i class="bi bi-caret-down-fill vs-down me-1"></i>Above or below the team median. Team figures cover salespeople with shipments in this period and leave out "Unassigned"; margin averages each salesperson's margin.</p>
+                                <p class="trend-note"><i class="bi bi-caret-up-fill vs-up"></i><i class="bi bi-caret-down-fill vs-down me-1"></i>Above or below the team median. Team figures cover salespeople with shipments in this period and leave out "Unassigned"; margin averages each salesperson's margin; revenue per CBM uses only salespeople with CBM on at least half their shipments.</p>
                             }
                         </div>
                     }
@@ -899,6 +1005,8 @@
                     <i class="bi bi-info-circle me-1"></i>
                     Dashed lines and faded bars mark a @unit the selected range only partly covers.
                     Amounts add CAD and USD together, as on the other dashboards.
+                    CBM is recorded on only some shipments (full-container exports usually carry weight only), so each CBM figure shows the share of shipments it covers; revenue per CBM is faded when that share is under half.
+                    Volumes over 2,000 CBM on a single booking are treated as entry errors and left out.
                 </p>
             </main>
         </div>
@@ -1141,7 +1249,7 @@
             document.getElementById('tabBtnCustomers').setAttribute('aria-selected', !business);
             if (!business && !tables.customerTable) {
                 ['customerTable', 'salesTable'].forEach(function (id) {
-                    tables[id] = $('#' + id).DataTable({ pageLength: 10, orderCellsTop: true, order: [[2, 'desc']], columnDefs: [{ targets: -1, orderable: false }] });
+                    tables[id] = $('#' + id).DataTable({ pageLength: 10, orderCellsTop: true, dom: '<"dt-top"lf><"table-scroll"t><"dt-bottom"ip>', order: [[2, 'desc']], columnDefs: [{ targets: -1, orderable: false }] });
                 });
             }
             try { localStorage.setItem('trendsTab', which); } catch (e) { }

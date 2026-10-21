@@ -1442,7 +1442,7 @@ namespace Ocean_Analyzer.Controllers
 
                     // Dates are stored as text in several formats, so they are parsed here rather than in SQL.
                     string query = $@"SELECT TRIM({dateColumn}), {GetGroupedStationSql("Station")}, TRIM(Customer), TRIM(Salesperson), TRIM(Type),
-                        COALESCE(PostedInvoices, 0), ABS(COALESCE(PostedCost, 0))
+                        COALESCE(PostedInvoices, 0), ABS(COALESCE(PostedCost, 0)), TRIM(ChargeableWeightVolume), TRIM(Weight)
                         FROM Ocean_Revenue_Analyzer_New {whereClause}";
 
                     using (var cmd = new MySqlCommand(query, conn))
@@ -1462,7 +1462,9 @@ namespace Ocean_Analyzer.Controllers
                                     SalesPerson = rdr.IsDBNull(3) || rdr.GetString(3) == "" ? "Unassigned" : rdr.GetString(3),
                                     Type = rdr.IsDBNull(4) ? "" : rdr.GetString(4),
                                     Revenue = rdr.GetDecimal(5),
-                                    Cost = rdr.GetDecimal(6)
+                                    Cost = rdr.GetDecimal(6),
+                                    Cbm = ParseVolumeCbm(rdr.IsDBNull(7) ? null : rdr.GetString(7)),
+                                    WeightKg = ParseWeightKg(rdr.IsDBNull(8) ? null : rdr.GetString(8))
                                 });
                             }
                         }
@@ -1484,6 +1486,58 @@ namespace Ocean_Analyzer.Controllers
             public DateTime Date;
             public string Station, Customer, SalesPerson, Type;
             public decimal Revenue, Cost;
+            public decimal? Cbm, WeightKg; // null when the booking has no usable measurement
+        }
+
+        // Above this a single booking's volume is a data-entry error, typically the weight in KG typed
+        // into the volume field (e.g. 145,922 CBM against 170,661 KG). 2,000 CBM is about 30 forty-foot containers.
+        private const decimal MaxBookingCbm = 2000m;
+
+        // "Chargeable Weight/Volume" arrives as text such as "32.40 CBM" or "1,250.00 CBF".
+        private static decimal? ParseVolumeCbm(string value)
+        {
+            decimal amount;
+            string unit;
+            if (!ParseMeasure(value, out amount, out unit) || amount <= 0) return null;
+            if (unit == "CBF") amount *= 0.0283168466m;
+            else if (unit != "CBM") return null;
+            return amount > MaxBookingCbm ? (decimal?)null : amount;
+        }
+
+        // Weight arrives as text such as "23,270.00 KG" or "425.00 LB".
+        private static decimal? ParseWeightKg(string value)
+        {
+            decimal amount;
+            string unit;
+            if (!ParseMeasure(value, out amount, out unit) || amount <= 0) return null;
+            if (unit == "LB" || unit == "LBS") return amount * 0.45359237m;
+            return unit == "KG" || unit == "KGS" ? amount : (decimal?)null;
+        }
+
+        private static bool ParseMeasure(string value, out decimal amount, out string unit)
+        {
+            amount = 0;
+            unit = null;
+            if (string.IsNullOrWhiteSpace(value)) return false;
+            string[] parts = value.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 2) return false;
+            unit = parts[1].ToUpperInvariant();
+            return decimal.TryParse(parts[0].Replace(",", ""), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out amount);
+        }
+
+        private static void AddVolume(TrendVolume target, IEnumerable<TrendRow> rows)
+        {
+            foreach (var r in rows)
+            {
+                target.Shipments++;
+                target.WeightKg += r.WeightKg ?? 0;
+                if (r.Cbm.HasValue)
+                {
+                    target.Cbm += r.Cbm.Value;
+                    target.CbmShipments++;
+                    target.CbmRevenue += r.Revenue;
+                }
+            }
         }
 
         private static readonly string[] StoredDateFormats = { "MM/dd/yyyy", "M/d/yyyy", "dd-MM-yyyy", "d-M-yyyy", "yyyy-MM-dd" };
@@ -1546,6 +1600,7 @@ namespace Ocean_Analyzer.Controllers
             data.Revenue = PerBucket(current, r => r.Revenue);
             data.Cost = PerBucket(current, r => r.Cost);
             data.Shipments = PerBucket(current, r => 1).Select(v => (int)v).ToList();
+            data.Cbm = PerBucket(current, r => r.Cbm ?? 0);
             for (int i = 0; i < n; i++)
             {
                 decimal gp = data.Revenue[i] - data.Cost[i];
@@ -1574,14 +1629,18 @@ namespace Ocean_Analyzer.Controllers
             List<TrendEntityRow> EntityRows(Func<TrendRow, string> key)
             {
                 var prevRevenue = previous.GroupBy(key).ToDictionary(g => g.Key, g => g.Sum(r => r.Revenue));
-                var result = current.GroupBy(key).Select(g => new TrendEntityRow
+                var result = current.GroupBy(key).Select(g =>
                 {
-                    Name = g.Key,
-                    Shipments = g.Count(),
-                    Revenue = g.Sum(r => r.Revenue),
-                    Cost = g.Sum(r => r.Cost),
-                    PreviousRevenue = prevRevenue.ContainsKey(g.Key) ? prevRevenue[g.Key] : 0,
-                    RevenueByBucket = PerBucket(g, r => r.Revenue)
+                    var row = new TrendEntityRow
+                    {
+                        Name = g.Key,
+                        Revenue = g.Sum(r => r.Revenue),
+                        Cost = g.Sum(r => r.Cost),
+                        PreviousRevenue = prevRevenue.ContainsKey(g.Key) ? prevRevenue[g.Key] : 0,
+                        RevenueByBucket = PerBucket(g, r => r.Revenue)
+                    };
+                    AddVolume(row, g);
+                    return row;
                 }).ToList();
                 // Also list anyone who had revenue last period but none in this one.
                 foreach (var gone in prevRevenue.Where(p => p.Value != 0 && !result.Any(r => r.Name == p.Key)))
@@ -1596,7 +1655,9 @@ namespace Ocean_Analyzer.Controllers
 
         private static TrendTotals Totals(List<TrendRow> rows)
         {
-            return new TrendTotals { Shipments = rows.Count, Revenue = rows.Sum(r => r.Revenue), Cost = rows.Sum(r => r.Cost) };
+            var totals = new TrendTotals { Revenue = rows.Sum(r => r.Revenue), Cost = rows.Sum(r => r.Cost) };
+            AddVolume(totals, rows);
+            return totals;
         }
 
         private void LoadDropdownFilters(MySqlConnection conn, OceanShipmentDashboardViewModel model)
@@ -1914,6 +1975,8 @@ namespace Ocean_Analyzer.Controllers
                     Currency = VALUES(Currency),
                     Customer = VALUES(Customer),
                     Salesperson = VALUES(Salesperson),
+                    Weight = VALUES(Weight),
+                    ChargeableWeightVolume = VALUES(ChargeableWeightVolume),
                     PostedCost = VALUES(PostedCost),
                     PostedInvoices = VALUES(PostedInvoices),
                     ActualGP = VALUES(ActualGP),

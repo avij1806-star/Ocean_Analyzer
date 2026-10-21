@@ -14,6 +14,7 @@ namespace Ocean_Analyzer_Fresh.Models
         public List<decimal> Cost { get; set; } = new List<decimal>();
         public List<decimal> GrossProfit { get; set; } = new List<decimal>();
         public List<decimal?> MarginPct { get; set; } = new List<decimal?>();
+        public List<decimal> Cbm { get; set; } = new List<decimal>();
 
         // Shipment counts per bucket for Import, Export, Domestic and Other, in that order.
         public List<TrendSeries> ShipmentsByType { get; set; } = new List<TrendSeries>();
@@ -45,21 +46,34 @@ namespace Ocean_Analyzer_Fresh.Models
         public List<decimal> Values { get; set; } = new List<decimal>();
     }
 
-    public class TrendTotals
+    public class TrendTotals : TrendVolume
     {
-        public int Shipments { get; set; }
         public decimal Revenue { get; set; }
         public decimal Cost { get; set; }
         public decimal GrossProfit => Revenue - Cost;
         public decimal? MarginPct => Revenue > 0 ? GrossProfit / Revenue * 100 : (decimal?)null;
     }
 
+    // Shipment count and volume. Many bookings (mostly full-container exports) carry weight but no
+    // volume, so CBM is only a partial picture: CbmCoveragePct says how much of it is measured.
+    public class TrendVolume
+    {
+        public int Shipments { get; set; }
+        public decimal Cbm { get; set; }
+        public decimal WeightKg { get; set; }
+        public int CbmShipments { get; set; }
+        // Revenue of the bookings that have a CBM value, so revenue per CBM compares like with like.
+        public decimal CbmRevenue { get; set; }
+        public decimal Tonnes => WeightKg / 1000;
+        public decimal CbmCoveragePct => Shipments > 0 ? CbmShipments * 100m / Shipments : 0;
+        public decimal? RevenuePerCbm => Cbm > 0 ? CbmRevenue / Cbm : (decimal?)null;
+    }
+
     // One customer or salesperson: totals for the selected range, revenue in the previous
     // period of the same length, and revenue per bucket for the sparkline.
-    public class TrendEntityRow
+    public class TrendEntityRow : TrendVolume
     {
         public string Name { get; set; }
-        public int Shipments { get; set; }
         public decimal Revenue { get; set; }
         public decimal Cost { get; set; }
         public decimal GrossProfit => Revenue - Cost;
