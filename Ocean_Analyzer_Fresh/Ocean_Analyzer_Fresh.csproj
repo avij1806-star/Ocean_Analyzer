@@ -196,6 +196,7 @@
     <Content Include="Views\Dashboard\UserPerformance.cshtml" />
     <Content Include="Views\Dashboard\StationTradeLane.cshtml" />
     <Content Include="Views\Dashboard\SalesPersonPerformance.cshtml" />
+    <Content Include="Views\Dashboard\CbmAnalysis.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="App_Data\" />

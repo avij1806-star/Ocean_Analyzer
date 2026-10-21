@@ -1061,6 +1061,179 @@ namespace Ocean_Analyzer.Controllers
             return View(model);
         }
 
+        // CBM volume from the "Chargeable Weight/Volume" text (e.g. "79.49 CBM"). CBF is converted
+        // to CBM; any other unit counts as 0 so weights are never mixed into the volume total.
+        private const string CbmSql = @"(CASE
+                WHEN UPPER(TRIM(ChargeableWeightVolume)) LIKE '%CBM' THEN CAST(NULLIF(REPLACE(SUBSTRING_INDEX(TRIM(ChargeableWeightVolume), ' ', 1), ',', ''), '') AS DECIMAL(18,3))
+                WHEN UPPER(TRIM(ChargeableWeightVolume)) LIKE '%CBF' THEN CAST(NULLIF(REPLACE(SUBSTRING_INDEX(TRIM(ChargeableWeightVolume), ' ', 1), ',', ''), '') AS DECIMAL(18,3)) * 0.0283168
+                ELSE 0 END)";
+
+        private DataTable RunTable(MySqlConnection conn, string sql, List<MySqlParameter> cmdParams)
+        {
+            var table = new DataTable();
+            using (var cmd = new MySqlCommand(sql, conn))
+            {
+                foreach (var p in cmdParams) cmd.Parameters.Add(new MySqlParameter(p.ParameterName, p.Value));
+                using (var reader = cmd.ExecuteReader()) table.Load(reader);
+            }
+            return table;
+        }
+
+        [HttpGet]
+        public ActionResult CbmAnalysis(string selectedStation = null, string selectedCustomer = null, string selectedSalesPerson = null, string fromDate = null, string toDate = null, string dateType = null)
+        {
+            if (selectedStation == "-- All Companies --" || selectedStation == "-- All Stations --") selectedStation = null;
+            if (selectedCustomer == "-- All Customers --") selectedCustomer = null;
+            if (selectedSalesPerson == "-- All Sales Persons --") selectedSalesPerson = null;
+
+            if (string.IsNullOrEmpty(fromDate) || string.IsNullOrEmpty(toDate))
+            {
+                var now = DateTime.Now;
+                fromDate = string.IsNullOrEmpty(fromDate) ? new DateTime(now.Year, now.Month, 1).ToString("yyyy-MM-dd") : fromDate;
+                toDate = string.IsNullOrEmpty(toDate) ? now.ToString("yyyy-MM-dd") : toDate;
+            }
+
+            var model = new OceanShipmentDashboardViewModel
+            {
+                SelectedStation = selectedStation,
+                SelectedCustomer = selectedCustomer,
+                SelectedSalesPerson = selectedSalesPerson,
+                FromDate = fromDate,
+                ToDate = toDate,
+                DateType = string.IsNullOrEmpty(dateType) ? "ets" : dateType,
+                CbmPeriodLabel = "Month"
+            };
+            model.DataAvailableSince = GetDataAvailableSince(model.DateType);
+
+            string dateColumn = "ETS";
+            string dtLower = model.DateType.ToLower();
+            if (dtLower == "eta") dateColumn = "ETA";
+            else if (dtLower == "posted" || dtLower == "dateposted") dateColumn = "DatePosted";
+
+            string parsedDate = $@"COALESCE(
+                STR_TO_DATE(TRIM({dateColumn}), '%m/%d/%Y'),
+                STR_TO_DATE(TRIM({dateColumn}), '%d-%m-%Y'),
+                STR_TO_DATE(TRIM({dateColumn}), '%Y-%m-%d'))";
+
+            try
+            {
+                using (var conn = new MySqlConnection(connStr))
+                {
+                    conn.Open();
+                    LoadDropdownFilters(conn, model);
+
+                    var whereClause = new StringBuilder(" WHERE 1=1");
+                    var cmdParams = new List<MySqlParameter>();
+
+                    if (!string.IsNullOrEmpty(selectedStation))
+                    {
+                        if (selectedStation == "Gillespie-Munro Canada")
+                            whereClause.Append(" AND UPPER(TRIM(Station)) LIKE '%GILLESPIE-MUNRO%' AND UPPER(TRIM(Station)) != 'GILLESPIE-MUNRO (USA) INC.'");
+                        else if (selectedStation == "Gillespie-Munro USA")
+                            whereClause.Append(" AND UPPER(TRIM(Station)) = 'GILLESPIE-MUNRO (USA) INC.'");
+                        else if (selectedStation == "Gillship Navigation")
+                            whereClause.Append(" AND UPPER(TRIM(Station)) LIKE '%GILLSHIP NAVIGATION%'");
+                        else
+                        {
+                            whereClause.Append($" AND {GetGroupedStationSql("Station")} = @station");
+                            cmdParams.Add(new MySqlParameter("@station", selectedStation));
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(selectedCustomer))
+                    {
+                        whereClause.Append(" AND UPPER(TRIM(Customer)) = UPPER(@customer)");
+                        cmdParams.Add(new MySqlParameter("@customer", selectedCustomer.Trim()));
+                    }
+
+                    if (!string.IsNullOrEmpty(selectedSalesPerson))
+                    {
+                        whereClause.Append(" AND UPPER(TRIM(Salesperson)) = UPPER(@salesPerson)");
+                        cmdParams.Add(new MySqlParameter("@salesPerson", selectedSalesPerson.Trim()));
+                    }
+
+                    if (DateTime.TryParse(fromDate, out DateTime parsedFrom) && DateTime.TryParse(toDate, out DateTime parsedTo))
+                    {
+                        whereClause.Append($" AND {parsedDate} BETWEEN STR_TO_DATE(@sqlFrom, '%Y-%m-%d') AND STR_TO_DATE(@sqlTo, '%Y-%m-%d')");
+                        cmdParams.Add(new MySqlParameter("@sqlFrom", parsedFrom.ToString("yyyy-MM-dd")));
+                        cmdParams.Add(new MySqlParameter("@sqlTo", parsedTo.ToString("yyyy-MM-dd")));
+
+                        // Short ranges read better day by day; longer ones month by month.
+                        if ((parsedTo - parsedFrom).TotalDays <= 62) model.CbmPeriodLabel = "Day";
+                    }
+
+                    var totals = RunTable(conn, $@"SELECT
+                        COUNT(DISTINCT BookingNo) AS Shipments,
+                        COALESCE(SUM({CbmSql}), 0) AS Cbm,
+                        COUNT(DISTINCT CASE WHEN {CbmSql} > 0 THEN BookingNo END) AS WithCbm
+                        FROM Ocean_Revenue_Analyzer_New {whereClause}", cmdParams);
+                    if (totals.Rows.Count > 0)
+                    {
+                        model.TotalShipments = Convert.ToInt32(totals.Rows[0]["Shipments"]);
+                        model.TotalCbm = Convert.ToDecimal(totals.Rows[0]["Cbm"]);
+                        model.ShipmentsWithCbm = Convert.ToInt32(totals.Rows[0]["WithCbm"]);
+                    }
+
+                    model.CbmByCompany = RunTable(conn, $@"SELECT
+                        {GetGroupedStationSql("Station")} AS Company,
+                        COUNT(DISTINCT BookingNo) AS Shipments,
+                        ROUND(COALESCE(SUM({CbmSql}), 0), 2) AS Cbm
+                        FROM Ocean_Revenue_Analyzer_New {whereClause}
+                        GROUP BY Company ORDER BY Cbm DESC", cmdParams);
+
+                    model.CbmByCustomer = RunTable(conn, $@"SELECT
+                        COALESCE(NULLIF(TRIM(Customer), ''), 'Unassigned') AS Customer,
+                        COUNT(DISTINCT BookingNo) AS Shipments,
+                        ROUND(COALESCE(SUM({CbmSql}), 0), 2) AS Cbm
+                        FROM Ocean_Revenue_Analyzer_New {whereClause}
+                        GROUP BY Customer ORDER BY Cbm DESC", cmdParams);
+
+                    model.CbmBySalesPerson = RunTable(conn, $@"SELECT
+                        COALESCE(NULLIF(TRIM(Salesperson), ''), 'Unassigned') AS SalesPerson,
+                        COUNT(DISTINCT BookingNo) AS Shipments,
+                        COUNT(DISTINCT TRIM(Customer)) AS Customers,
+                        ROUND(COALESCE(SUM({CbmSql}), 0), 2) AS Cbm
+                        FROM Ocean_Revenue_Analyzer_New {whereClause}
+                        GROUP BY SalesPerson ORDER BY Cbm DESC", cmdParams);
+
+                    string periodFormat = model.CbmPeriodLabel == "Day" ? "%Y-%m-%d" : "%Y-%m";
+                    model.CbmByPeriod = RunTable(conn, $@"SELECT
+                        DATE_FORMAT({parsedDate}, '{periodFormat}') AS Period,
+                        COUNT(DISTINCT BookingNo) AS Shipments,
+                        ROUND(COALESCE(SUM({CbmSql}), 0), 2) AS Cbm
+                        FROM Ocean_Revenue_Analyzer_New {whereClause} AND {parsedDate} IS NOT NULL
+                        GROUP BY Period ORDER BY Period", cmdParams);
+
+                    model.CbmBySalesPersonPeriod = RunTable(conn, $@"SELECT
+                        COALESCE(NULLIF(TRIM(Salesperson), ''), 'Unassigned') AS SalesPerson,
+                        DATE_FORMAT({parsedDate}, '{periodFormat}') AS Period,
+                        ROUND(COALESCE(SUM({CbmSql}), 0), 2) AS Cbm
+                        FROM Ocean_Revenue_Analyzer_New {whereClause} AND {parsedDate} IS NOT NULL
+                        GROUP BY SalesPerson, Period", cmdParams);
+
+                    model.CbmByCompanyPeriod = RunTable(conn, $@"SELECT
+                        {GetGroupedStationSql("Station")} AS Company,
+                        DATE_FORMAT({parsedDate}, '{periodFormat}') AS Period,
+                        ROUND(COALESCE(SUM({CbmSql}), 0), 2) AS Cbm
+                        FROM Ocean_Revenue_Analyzer_New {whereClause} AND {parsedDate} IS NOT NULL
+                        GROUP BY Company, Period", cmdParams);
+
+                    model.CbmByType = RunTable(conn, $@"SELECT
+                        COALESCE(NULLIF(TRIM(Type), ''), 'Unspecified') AS ShipType,
+                        COUNT(DISTINCT BookingNo) AS Shipments,
+                        ROUND(COALESCE(SUM({CbmSql}), 0), 2) AS Cbm
+                        FROM Ocean_Revenue_Analyzer_New {whereClause}
+                        GROUP BY ShipType ORDER BY Cbm DESC", cmdParams);
+                }
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = ex.Message;
+            }
+
+            return View(model);
+        }
+
         private void LoadAllChartsData(MySqlConnection conn, OceanShipmentDashboardViewModel model, string whereClause, List<MySqlParameter> cmdParams)
         {
             model.ShipmentsByStation.Clear();

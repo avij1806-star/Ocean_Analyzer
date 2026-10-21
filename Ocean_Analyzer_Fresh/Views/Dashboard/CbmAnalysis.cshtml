@@ -1,0 +1,1004 @@
+﻿@model Ocean_Analyzer_Fresh.Models.OceanShipmentDashboardViewModel
+@using System.Data
+
+@{
+    ViewBag.Title = "CBM Volume Analysis";
+    Layout = null;
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewBag.Title</title>
+
+    <!-- Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://api.fontshare.com/v2/css?f[]=general-sans@500,600,700&f[]=satoshi@400,500,700,900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="@Url.Content("~/Content/date-filter.css")">
+    <!-- DataTables CSS -->
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+
+    <style>
+        :root, [data-theme='light'] {
+            --color-bg: #eef2f7;
+            --color-surface: #ffffff;
+            --color-surface-2: #f7f9fc;
+            --color-surface-offset: #e8edf4;
+            --color-border: #d8e0ea;
+            --color-divider: #e3e9f1;
+            --color-text: #0f1a2b;
+            --color-text-muted: #5b6b81;
+            --color-text-faint: #97a5b8;
+            --color-primary: #0e7490;
+            --color-primary-highlight: #d3ebf1;
+            --color-secondary: #2c4a8a;
+            --color-success: #157f4b;
+            --color-error: #b3261e;
+            --color-warning: #a35a09;
+            --radius-md: 0.625rem;
+            --radius-lg: 0.875rem;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
+            --font-display: 'General Sans', sans-serif;
+            --font-body: 'Satoshi', sans-serif;
+        }
+
+        body {
+            background-color: var(--color-bg);
+            font-family: var(--font-body);
+            color: var(--color-text);
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 240px 1fr;
+            height: 100vh;
+            transition: grid-template-columns 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+            .dashboard.sidebar-collapsed {
+                grid-template-columns: 0px 1fr;
+            }
+
+        .sidebar {
+            background: var(--color-surface);
+            border-right: 1px solid var(--color-border);
+            display: flex;
+            flex-direction: column;
+            padding: 1.25rem 1rem;
+            gap: 1.5rem;
+            overflow-y: auto;
+            overflow-x: hidden;
+            white-space: nowrap;
+            transition: opacity 0.2s ease, padding 0.3s ease;
+        }
+
+        .dashboard.sidebar-collapsed .sidebar {
+            opacity: 0;
+            padding: 0;
+            pointer-events: none;
+            border-right: none;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-family: var(--font-display);
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+            .brand svg {
+                width: 32px;
+                height: 32px;
+                color: var(--color-primary);
+                flex-shrink: 0;
+            }
+
+            .brand span {
+                display: block;
+                font-size: 0.75rem;
+                color: var(--color-text-muted);
+                font-weight: 500;
+            }
+
+        .nav-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .nav-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--color-text-faint);
+            font-weight: 700;
+            padding: 0 0.5rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem 0.75rem;
+            border-radius: var(--radius-md);
+            font-size: 0.85rem;
+            color: var(--color-text-muted);
+            font-weight: 500;
+            text-decoration: none;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+            .nav-link:hover, .nav-link.active {
+                background: var(--color-primary-highlight);
+                color: var(--color-primary);
+            }
+
+        .main-col {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            min-width: 0;
+        }
+
+        .topbar {
+            background: var(--color-surface);
+            border-bottom: 1px solid var(--color-border);
+            padding: 1rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            flex-shrink: 0;
+        }
+
+        .topbar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .topbar-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            font-family: var(--font-display);
+        }
+
+        .sidebar-toggle-btn {
+            background: var(--color-surface-offset);
+            border: 1px solid var(--color-border);
+            color: var(--color-text);
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 14px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+            .sidebar-toggle-btn:hover {
+                background: var(--color-primary-highlight);
+                color: var(--color-primary);
+            }
+
+        .filters-row {
+            display: flex;
+            align-items: flex-end;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .filter-field {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+            .filter-field label {
+                font-size: 10px;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                color: #112b4f;
+                font-weight: 700;
+            }
+
+        .form-select, .form-control {
+            border-radius: 8px;
+            border-color: var(--color-border);
+            font-size: 12px;
+            padding: 6px 10px;
+        }
+
+        .main-scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        .section {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .section-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            font-family: var(--font-display);
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .kpi-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .kpi-label {
+            font-size: 0.75rem;
+            color: #091c36;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .kpi-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: var(--font-display);
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+
+        @@media (max-width: 992px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: 1.25rem;
+            box-shadow: var(--shadow-sm);
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .panel-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            font-family: var(--font-display);
+        }
+
+        .chart-wrap {
+            position: relative;
+            height: 280px;
+        }
+
+        .data-table {
+            width: 100%;
+            font-size: 0.8rem;
+            border-collapse: collapse;
+        }
+
+            .data-table th, .data-table td {
+                padding: 0.65rem 0.75rem;
+                border-bottom: 1px solid var(--color-divider);
+                text-align: left;
+                white-space: nowrap;
+            }
+
+            .data-table th {
+                background: var(--color-surface-2);
+                font-weight: 700;
+                color: var(--color-text-muted);
+                font-size: 0.7rem;
+                text-transform: uppercase;
+            }
+
+            .data-table tr:hover td {
+                background: var(--color-surface-offset);
+            }
+
+        .tnum {
+            font-variant-numeric: tabular-nums;
+        }
+
+        .data-table td.num, .data-table th.num {
+            text-align: right;
+        }
+
+        .chart-wrap.tall {
+            height: 320px;
+        }
+
+        .panel-note {
+            font-size: 0.75rem;
+            color: var(--color-text-muted);
+            margin-top: -0.5rem;
+        }
+
+        .pivot-table td.zero {
+            color: var(--color-text-faint);
+        }
+
+        .pivot-table th:first-child, .pivot-table td:first-child {
+            position: sticky;
+            left: 0;
+            background: var(--color-surface);
+            z-index: 1;
+        }
+
+        .pivot-table th:first-child {
+            background: var(--color-surface-2);
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+
+        @@media (max-width: 1200px) {
+            .grid-3 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .chart-wrap.donut {
+            height: 300px;
+        }
+
+        .chart-wrap.short {
+            height: 240px;
+        }
+    </style>
+</head>
+@{
+    decimal avgCbm = Model.ShipmentsWithCbm > 0 ? Model.TotalCbm / Model.ShipmentsWithCbm : 0;
+    bool byDay = Model.CbmPeriodLabel == "Day";
+    Func<string, string> periodText = p =>
+    {
+        DateTime d;
+        if (byDay && DateTime.TryParseExact(p, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out d)) return d.ToString("dd MMM");
+        if (!byDay && DateTime.TryParseExact(p + "-01", "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out d)) return d.ToString("MMM yyyy");
+        return p;
+    };
+
+    // Sales person x period grid
+    var periods = Model.CbmByPeriod.Rows.Cast<DataRow>().Select(r => r["Period"].ToString()).ToList();
+    var spOrder = Model.CbmBySalesPerson.Rows.Cast<DataRow>().Select(r => r["SalesPerson"].ToString()).ToList();
+    var grid = new Dictionary<string, Dictionary<string, decimal>>();
+    foreach (DataRow r in Model.CbmBySalesPersonPeriod.Rows)
+    {
+        string sp = r["SalesPerson"].ToString();
+        if (!grid.ContainsKey(sp)) { grid[sp] = new Dictionary<string, decimal>(); }
+        grid[sp][r["Period"].ToString()] = Convert.ToDecimal(r["Cbm"]);
+    }
+
+    var periodLabels = periods.Select(periodText).ToArray();
+    var periodValues = Model.CbmByPeriod.Rows.Cast<DataRow>().Select(r => Convert.ToDecimal(r["Cbm"])).ToArray();
+    var spTop = Model.CbmBySalesPerson.Rows.Cast<DataRow>().Take(10).ToList();
+    var custTop = Model.CbmByCustomer.Rows.Cast<DataRow>().Take(10).ToList();
+
+    // Each company keeps the same colour whatever is filtered (slot = position in the full company list).
+    var companyNames = (Model.AvailableStations ?? new List<string>()).ToList();
+    foreach (DataRow r in Model.CbmByCompany.Rows)
+    {
+        string n = r["Company"].ToString();
+        if (!companyNames.Contains(n)) { companyNames.Add(n); }
+    }
+
+    // Company x period, for the stacked date chart.
+    var companyPeriod = new Dictionary<string, Dictionary<string, decimal>>();
+    foreach (DataRow r in Model.CbmByCompanyPeriod.Rows)
+    {
+        string c = r["Company"].ToString();
+        if (!companyPeriod.ContainsKey(c)) { companyPeriod[c] = new Dictionary<string, decimal>(); }
+        companyPeriod[c][r["Period"].ToString()] = Convert.ToDecimal(r["Cbm"]);
+    }
+    var stackedSeries = Model.CbmByCompany.Rows.Cast<DataRow>()
+        .Select(r => r["Company"].ToString())
+        .Where(c => companyPeriod.ContainsKey(c))
+        .Select(c => new
+        {
+            name = c,
+            slot = companyNames.IndexOf(c),
+            data = periods.Select(p => companyPeriod[c].ContainsKey(p) ? companyPeriod[c][p] : 0m).ToArray()
+        }).ToArray();
+
+    // Running total for the cumulative line.
+    decimal running = 0;
+    var cumulative = periodValues.Select(v => running += v).ToArray();
+
+    // Donut slices: top 5 named, the rest folded into "Other".
+    Func<DataTable, string, object> topSlices = (table, nameCol) =>
+    {
+        var rows = table.Rows.Cast<DataRow>().Where(r => Convert.ToDecimal(r["Cbm"]) > 0).ToList();
+        var top = rows.Take(5).Select(r => new { name = r[nameCol].ToString(), value = Convert.ToDecimal(r["Cbm"]) }).ToList();
+        decimal other = rows.Skip(5).Sum(r => Convert.ToDecimal(r["Cbm"]));
+        if (other > 0) { top.Add(new { name = "Other (" + (rows.Count - 5) + ")", value = other }); }
+        return top;
+    };
+    var typeSlices = Model.CbmByType.Rows.Cast<DataRow>().Where(r => Convert.ToDecimal(r["Cbm"]) > 0)
+        .Select(r => new { name = r["ShipType"].ToString(), value = Convert.ToDecimal(r["Cbm"]) }).ToList();
+    var companySlices = Model.CbmByCompany.Rows.Cast<DataRow>().Where(r => Convert.ToDecimal(r["Cbm"]) > 0)
+        .Select(r => new { name = r["Company"].ToString(), value = Convert.ToDecimal(r["Cbm"]), slot = companyNames.IndexOf(r["Company"].ToString()) }).ToList();
+}
+<body>
+
+    <div class="dashboard" id="dashboardLayout">
+        <!-- SIDEBAR NAVIGATION -->
+        <aside class="sidebar" aria-label="Primary navigation">
+            <div class="brand">
+                <svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="currentColor" /><path d="M6 20.5l6-11 6 11M18 20.5l4-7.5 4 7.5" stroke="white" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                <div>Performance Dashboard <span>Load Access BI</span></div>
+            </div>
+
+            <nav class="nav-group">
+                <div class="nav-label">Modules</div>
+                <a href="@Url.Action("Ocean_Dashboard", "Dashboard")" class="nav-link"><i class="bi bi-grid-1x2-fill"></i> Executive Overview</a>
+                <a href="@Url.Action("ProfitAnalysis", "Dashboard")" class="nav-link"><i class="bi bi-graph-up-arrow"></i> Profit &amp; Loss P&amp;L</a>
+                <a href="@Url.Action("UserPerformance", "Dashboard")" class="nav-link"><i class="bi bi-person-badge-fill"></i> User Productivity</a>
+                <a href="@Url.Action("SalesPersonPerformance", "Dashboard")" class="nav-link"><i class="bi bi-people-fill"></i> Sales Performance</a>
+                <a href="@Url.Action("StationTradeLane", "Dashboard")" class="nav-link"><i class="bi bi-compass-fill"></i> Company Trade Lanes</a>
+                <a href="@Url.Action("CbmAnalysis", "Dashboard")" class="nav-link active"><i class="bi bi-box-seam-fill"></i> CBM Volume</a>
+            </nav>
+            @Html.Partial("_DateRangeLabel", Model)
+        </aside>
+
+        <!-- MAIN VIEW AREA -->
+        <div class="main-col">
+            <header class="topbar">
+                <div class="topbar-header">
+                    <div class="d-flex align-items-center gap-3">
+                        <button type="button" id="sidebarToggleBtn" class="sidebar-toggle-btn" title="Expand/Collapse Sidebar">
+                            <i class="bi bi-layout-sidebar"></i>
+                        </button>
+                        <div class="topbar-title">CBM Volume Analysis</div>
+                    </div>
+                </div>
+
+                @using (Html.BeginForm("CbmAnalysis", "Dashboard", FormMethod.Get, new { @class = "filters-row" }))
+                {
+                    @Html.Partial("_DateFilter", Model)
+                    <input type="hidden" name="selectedFileStatus" value="@Request.QueryString["selectedFileStatus"]" />
+                    <input type="hidden" name="selectedCreatedBy" value="@Request.QueryString["selectedCreatedBy"]" />
+                    <div class="filter-field">
+                        <label>Companies</label>
+                        @Html.DropDownList("selectedStation", new SelectList(Model.AvailableStations ?? new List<string>(), Model.SelectedStation), "-- All Companies --", new { @id = "selectedStation", @class = "form-select form-select-sm" })
+                    </div>
+                    <div class="filter-field">
+                        <label>Customer Account</label>
+                        @Html.DropDownList("selectedCustomer", new SelectList(Model.AvailableCustomers ?? new List<string>(), Model.SelectedCustomer), "-- All Customers --", new { @id = "selectedCustomer", @class = "form-select form-select-sm" })
+                    </div>
+                    <div class="filter-field">
+                        <label>Sales Executive</label>
+                        @Html.DropDownList("selectedSalesPerson", new SelectList(Model.AvailableSalesPersons ?? new List<string>(), Model.SelectedSalesPerson), "-- All Sales Persons --", new { @id = "selectedSalesPerson", @class = "form-select form-select-sm" })
+                    </div>
+                    <div class="filter-actions">
+                        <button type="submit" class="btn btn-applied btn-sm px-3 py-1">Apply Filters</button>
+                    </div>
+                }
+            </header>
+
+            <main class="main-scroll" id="mainScroll">
+                @if (TempData["ErrorMessage"] != null)
+                {
+                    <div class="alert alert-danger mb-0">@TempData["ErrorMessage"]</div>
+                }
+
+                <!-- CBM KPIS -->
+                <section class="section">
+                    <div class="section-title">Volume Summary</div>
+                    <div class="kpi-grid">
+                        <div class="kpi-card">
+                            <div class="kpi-label"><i class="bi bi-box-seam"></i> Total CBM</div>
+                            <div class="kpi-value tnum">@Model.TotalCbm.ToString("N2")</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label"><i class="bi bi-ship"></i> Shipments</div>
+                            <div class="kpi-value tnum">@Model.TotalShipments.ToString("N0")</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label"><i class="bi bi-check2-square"></i> Shipments with CBM</div>
+                            <div class="kpi-value tnum">@Model.ShipmentsWithCbm.ToString("N0")</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label"><i class="bi bi-rulers"></i> Avg CBM per Shipment</div>
+                            <div class="kpi-value tnum">@avgCbm.ToString("N2")</div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- DATE-WISE TREND, SPLIT BY COMPANY -->
+                <section class="section">
+                    <div class="panel">
+                        <div class="panel-title"><i class="bi bi-calendar3 me-2"></i> CBM by @(byDay ? "Day" : "Month") and Company</div>
+                        <div class="panel-note">Grouped by the date basis chosen in the Date Range filter. Ranges over two months are shown by month. The number on each bar is the total.</div>
+                        <div class="chart-wrap tall"><canvas id="cbmPeriodChart"></canvas></div>
+                    </div>
+                </section>
+
+                <!-- SHARE DONUTS -->
+                <section class="section">
+                    <div class="section-title">CBM Share</div>
+                    <div class="grid-3">
+                        <div class="panel">
+                            <div class="panel-title"><i class="bi bi-arrow-left-right me-2"></i> Import vs Export</div>
+                            <div class="chart-wrap donut"><canvas id="typeDonut"></canvas></div>
+                        </div>
+                        <div class="panel">
+                            <div class="panel-title"><i class="bi bi-people-fill me-2"></i> Top Sales Persons</div>
+                            <div class="chart-wrap donut"><canvas id="salesDonut"></canvas></div>
+                        </div>
+                        <div class="panel">
+                            <div class="panel-title"><i class="bi bi-person-lines-fill me-2"></i> Top Customers</div>
+                            <div class="chart-wrap donut"><canvas id="customerDonut"></canvas></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TOP CUSTOMERS + RUNNING TOTAL -->
+                <section class="section">
+                    <div class="grid-2">
+                        <div class="panel">
+                            <div class="panel-title"><i class="bi bi-trophy-fill me-2"></i> Top 10 Customers by CBM</div>
+                            <div class="chart-wrap tall"><canvas id="cbmCustomerChart"></canvas></div>
+                        </div>
+                        <div class="panel">
+                            <div class="panel-title"><i class="bi bi-graph-up me-2"></i> Running Total CBM</div>
+                            <div class="panel-note">How the period's CBM builds up @(byDay ? "day by day" : "month by month").</div>
+                            <div class="chart-wrap tall"><canvas id="cbmCumulativeChart"></canvas></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- COMPANY + SALES PERSON -->
+                <section class="section">
+                    <div class="grid-2">
+                        <div class="panel">
+                            <div class="panel-title"><i class="bi bi-building me-2"></i> CBM by Company</div>
+                            <div class="chart-wrap donut"><canvas id="companyDonut"></canvas></div>
+                            <div style="overflow-x: auto;">
+                                <table class="data-table" id="companyTable">
+                                    <thead><tr><th>Company</th><th class="num">Shipments</th><th class="num">CBM</th><th class="num">Share</th></tr></thead>
+                                    <tbody>
+                                        @foreach (DataRow r in Model.CbmByCompany.Rows)
+                                        {
+                                            decimal c = Convert.ToDecimal(r["Cbm"]);
+                                            <tr>
+                                                <td>@r["Company"]</td>
+                                                <td class="num tnum">@Convert.ToInt32(r["Shipments"]).ToString("N0")</td>
+                                                <td class="num tnum">@c.ToString("N2")</td>
+                                                <td class="num tnum">@(Model.TotalCbm > 0 ? (c / Model.TotalCbm * 100).ToString("N1") : "0.0")%</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="panel">
+                            <div class="panel-title"><i class="bi bi-people-fill me-2"></i> CBM by Sales Person</div>
+                            <div class="chart-wrap tall"><canvas id="cbmSalesChart"></canvas></div>
+                            <div style="overflow-x: auto;">
+                                <table class="data-table" id="salesTable">
+                                    <thead><tr><th>Sales Person</th><th class="num">Customers</th><th class="num">Shipments</th><th class="num">CBM</th><th class="num">Share</th></tr></thead>
+                                    <tbody>
+                                        @foreach (DataRow r in Model.CbmBySalesPerson.Rows)
+                                        {
+                                            decimal c = Convert.ToDecimal(r["Cbm"]);
+                                            <tr>
+                                                <td>@r["SalesPerson"]</td>
+                                                <td class="num tnum">@Convert.ToInt32(r["Customers"]).ToString("N0")</td>
+                                                <td class="num tnum">@Convert.ToInt32(r["Shipments"]).ToString("N0")</td>
+                                                <td class="num tnum">@c.ToString("N2")</td>
+                                                <td class="num tnum">@(Model.TotalCbm > 0 ? (c / Model.TotalCbm * 100).ToString("N1") : "0.0")%</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- SALES PERSON x DATE GRID -->
+                <section class="section">
+                    <div class="panel">
+                        <div class="panel-title"><i class="bi bi-table me-2"></i> Sales Person CBM by @(byDay ? "Day" : "Month")</div>
+                        @if (periods.Count == 0)
+                        {
+                            <div class="panel-note">No shipments in this date range.</div>
+                        }
+                        else
+                        {
+                            <div style="overflow-x: auto;">
+                                <table class="data-table pivot-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Sales Person</th>
+                                            @foreach (var p in periods)
+                                            {
+                                                <th class="num">@periodText(p)</th>
+                                            }
+                                            <th class="num">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var sp in spOrder.Where(s => grid.ContainsKey(s)))
+                                        {
+                                            decimal rowTotal = 0;
+                                            <tr>
+                                                <td>@sp</td>
+                                                @foreach (var p in periods)
+                                                {
+                                                    decimal v = grid[sp].ContainsKey(p) ? grid[sp][p] : 0;
+                                                    rowTotal += v;
+                                                    <td class="num tnum @(v == 0 ? "zero" : "")">@(v == 0 ? "–" : v.ToString("N2"))</td>
+                                                }
+                                                <td class="num tnum"><strong>@rowTotal.ToString("N2")</strong></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                    <tfoot>
+                                        <tr>
+                                            <th>Total</th>
+                                            @foreach (var v in periodValues)
+                                            {
+                                                <th class="num tnum">@v.ToString("N2")</th>
+                                            }
+                                            <th class="num tnum">@periodValues.Sum().ToString("N2")</th>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </section>
+
+                <!-- CUSTOMER TABLE -->
+                <section class="section">
+                    <div class="panel" style="height: auto;">
+                        <div class="panel-title"><i class="bi bi-person-lines-fill me-2"></i> CBM by Customer (@Model.CbmByCustomer.Rows.Count customers)</div>
+                        <div style="overflow-x: auto;">
+                            <table class="data-table" id="customerTable">
+                                <thead><tr><th>Customer</th><th class="num">Shipments</th><th class="num">CBM</th><th class="num">Avg CBM / Shipment</th><th class="num">Share</th></tr></thead>
+                                <tbody>
+                                    @foreach (DataRow r in Model.CbmByCustomer.Rows)
+                                    {
+                                        decimal c = Convert.ToDecimal(r["Cbm"]);
+                                        int s = Convert.ToInt32(r["Shipments"]);
+                                        <tr>
+                                            <td>@r["Customer"]</td>
+                                            <td class="num tnum">@s.ToString("N0")</td>
+                                            <td class="num tnum" data-order="@c">@c.ToString("N2")</td>
+                                            <td class="num tnum">@(s > 0 ? (c / s).ToString("N2") : "0.00")</td>
+                                            <td class="num tnum">@(Model.TotalCbm > 0 ? (c / Model.TotalCbm * 100).ToString("N1") : "0.0")%</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    <script src="@Url.Content("~/Scripts/date-filter.js")"></script>
+    <script>
+    document.addEventListener("DOMContentLoaded", function () {
+        Chart.register(ChartDataLabels);
+
+        const toggleBtn = document.getElementById('sidebarToggleBtn');
+        const dashboardLayout = document.getElementById('dashboardLayout');
+        if (toggleBtn && dashboardLayout) {
+            toggleBtn.addEventListener('click', function () {
+                dashboardLayout.classList.toggle('sidebar-collapsed');
+                setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 300);
+            });
+        }
+
+        // Companies -> Customers & Sales persons
+        $('#selectedStation').change(function () {
+            var selectedStation = $(this).val();
+            var customerDropdown = $('#selectedCustomer');
+            var salesPersonDropdown = $('#selectedSalesPerson');
+            customerDropdown.empty().append($('<option></option>').val('').text('-- All Customers --'));
+            salesPersonDropdown.empty().append($('<option></option>').val('').text('-- All Sales Persons --'));
+            var station = (!selectedStation || selectedStation === '-- All Companies --') ? '' : selectedStation;
+
+            $.get('@Url.Action("GetCustomersByStation", "Dashboard")', { station: station }, function (list) {
+                $.each(list, function (i, v) { customerDropdown.append($('<option></option>').val(v).text(v)); });
+            });
+            $.get('@Url.Action("GetSalesPersonsByStation", "Dashboard")', { station: station }, function (list) {
+                $.each(list, function (i, v) { salesPersonDropdown.append($('<option></option>').val(v).text(v)); });
+            });
+        });
+
+        // Colour palette (validated for colour-blind separation). Slots are assigned in this fixed order.
+        const PALETTE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
+        const GRAY_UNASSIGNED = '#9a9993';
+        const GRAY_OTHER = '#d4d3cc';
+        const INK = '#0f1a2b', INK_MUTED = '#5b6b81', GRID = '#eef1f5';
+        const slotColor = (i) => (i >= 0 && i < PALETTE.length) ? PALETTE[i] : GRAY_OTHER;
+
+        Chart.defaults.font.family = "'Satoshi', system-ui, sans-serif";
+        Chart.defaults.color = INK_MUTED;
+
+        const fmt = (v) => Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 });
+        const fmt2 = (v) => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const shorten = (s, n) => (s && s.length > n) ? s.slice(0, n - 1) + '…' : s;
+        const tooltipCbm = { callbacks: { label: (ctx) => fmt2(ctx.chart.options.indexAxis === 'y' ? ctx.parsed.x : ctx.parsed.y) + ' CBM' } };
+
+        // Single-series bar chart (one colour for every bar).
+        function barChart(id, labels, values, horizontal) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            new Chart(el.getContext('2d'), {
+                type: 'bar',
+                data: { labels: labels, datasets: [{ label: 'CBM', data: values, backgroundColor: PALETTE[0], borderRadius: 4, maxBarThickness: 22 }] },
+                options: {
+                    indexAxis: horizontal ? 'y' : 'x',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: horizontal ? { right: 56 } : { top: 20 } },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: tooltipCbm,
+                        datalabels: {
+                            anchor: 'end',
+                            align: horizontal ? 'right' : 'top',
+                            font: { size: 10, weight: 'bold' },
+                            color: INK,
+                            display: (ctx) => labels.length <= 31 && ctx.dataset.data[ctx.dataIndex] > 0,
+                            formatter: fmt
+                        }
+                    },
+                    scales: horizontal
+                        ? { x: { beginAtZero: true, grid: { color: GRID } }, y: { grid: { display: false }, ticks: { font: { size: 10 }, callback: function (v) { return shorten(this.getLabelForValue(v), 28); } } } }
+                        : { y: { beginAtZero: true, grid: { color: GRID } }, x: { grid: { display: false } } }
+                }
+            });
+        }
+
+        // Donut with the total in the middle and "name – share%" in the legend.
+        const centerTotal = {
+            id: 'centerTotal',
+            afterDraw(chart) {
+                const meta = chart.getDatasetMeta(0);
+                if (!meta.data.length) return;
+                const total = chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                const { x, y } = meta.data[0];
+                const ctx = chart.ctx;
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.fillStyle = INK;
+                ctx.font = "700 18px 'General Sans', system-ui, sans-serif";
+                ctx.fillText(fmt(total), x, y + 2);
+                ctx.fillStyle = INK_MUTED;
+                ctx.font = "600 10px 'Satoshi', system-ui, sans-serif";
+                ctx.fillText('CBM', x, y + 18);
+                ctx.restore();
+            }
+        };
+
+        function donutChart(id, slices, colors) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (!slices.length) {
+                el.parentNode.innerHTML = '<div class="panel-note" style="margin-top:0">No CBM in this selection.</div>';
+                return;
+            }
+            const total = slices.reduce((a, s) => a + Number(s.value), 0);
+            const pct = (v) => total > 0 ? (v / total * 100) : 0;
+            new Chart(el.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: slices.map(s => s.name),
+                    datasets: [{ data: slices.map(s => Number(s.value)), backgroundColor: colors, borderColor: '#ffffff', borderWidth: 2, hoverOffset: 6 }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '62%',
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                boxWidth: 10, boxHeight: 10, font: { size: 10 }, color: INK,
+                                generateLabels: (chart) => Chart.overrides.doughnut.plugins.legend.labels.generateLabels(chart).map((l, i) => {
+                                    l.text = shorten(chart.data.labels[i], 22) + '  ' + pct(chart.data.datasets[0].data[i]).toFixed(1) + '%';
+                                    return l;
+                                })
+                            }
+                        },
+                        tooltip: { callbacks: { label: (ctx) => ctx.label + ': ' + fmt2(ctx.raw) + ' CBM (' + pct(ctx.raw).toFixed(1) + '%)' } },
+                        datalabels: { display: false }
+                    }
+                },
+                plugins: [centerTotal]
+            });
+        }
+
+        // 1. CBM by period, stacked by company (colour follows the company).
+        const periodLabels = @Html.Raw(Json.Encode(periodLabels));
+        const periodTotals = @Html.Raw(Json.Encode(periodValues));
+        const stacked = @Html.Raw(Json.Encode(stackedSeries));
+        (function () {
+            const el = document.getElementById('cbmPeriodChart');
+            if (!el) return;
+            const lastIdx = stacked.length - 1;
+            new Chart(el.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: periodLabels,
+                    datasets: stacked.map((s, i) => ({
+                        label: s.name,
+                        data: s.data,
+                        backgroundColor: slotColor(s.slot),
+                        borderColor: '#ffffff',
+                        borderWidth: { top: i === lastIdx ? 0 : 1 },
+                        borderRadius: i === lastIdx ? { topLeft: 4, topRight: 4 } : 0,
+                        borderSkipped: false,
+                        maxBarThickness: 44
+                    }))
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 22 } },
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 10, boxHeight: 10, padding: 16, font: { size: 11 }, color: INK } },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => ctx.parsed.y > 0 ? ctx.dataset.label + ': ' + fmt2(ctx.parsed.y) + ' CBM' : null,
+                                footer: (items) => items.length ? 'Total: ' + fmt2(periodTotals[items[0].dataIndex]) + ' CBM' : ''
+                            }
+                        },
+                        datalabels: {
+                            // Only the top segment carries a label: the bar's total.
+                            display: (ctx) => ctx.datasetIndex === lastIdx && periodLabels.length <= 31 && periodTotals[ctx.dataIndex] > 0,
+                            anchor: 'end',
+                            align: 'top',
+                            font: { size: 10, weight: 'bold' },
+                            color: INK,
+                            formatter: (v, ctx) => fmt(periodTotals[ctx.dataIndex])
+                        }
+                    },
+                    scales: {
+                        x: { stacked: true, grid: { display: false } },
+                        y: { stacked: true, beginAtZero: true, grid: { color: GRID }, ticks: { callback: (v) => fmt(v) } }
+                    }
+                }
+            });
+        })();
+
+        // 2. Share donuts.
+        const typeSlices = @Html.Raw(Json.Encode(typeSlices));
+        const typeOrder = { 'Import': 0, 'Export': 1, 'Domestic': 2 };
+        donutChart('typeDonut', typeSlices, typeSlices.map(s => s.name in typeOrder ? PALETTE[typeOrder[s.name]] : GRAY_OTHER));
+
+        const rankColors = (slices) => {
+            let slot = 0;
+            return slices.map(s => s.name === 'Unassigned' ? GRAY_UNASSIGNED : s.name.indexOf('Other (') === 0 ? GRAY_OTHER : PALETTE[slot++]);
+        };
+        const salesSlices = @Html.Raw(Json.Encode(topSlices(Model.CbmBySalesPerson, "SalesPerson")));
+        donutChart('salesDonut', salesSlices, rankColors(salesSlices));
+        const customerSlices = @Html.Raw(Json.Encode(topSlices(Model.CbmByCustomer, "Customer")));
+        donutChart('customerDonut', customerSlices, rankColors(customerSlices));
+
+        const companySlices = @Html.Raw(Json.Encode(companySlices));
+        donutChart('companyDonut', companySlices, companySlices.map(s => slotColor(s.slot)));
+
+        // 3. Top customers and top sales persons.
+        barChart('cbmCustomerChart',
+            @Html.Raw(Json.Encode(custTop.Select(r => r["Customer"].ToString()).ToArray())),
+            @Html.Raw(Json.Encode(custTop.Select(r => Convert.ToDecimal(r["Cbm"])).ToArray())), true);
+        barChart('cbmSalesChart',
+            @Html.Raw(Json.Encode(spTop.Select(r => r["SalesPerson"].ToString()).ToArray())),
+            @Html.Raw(Json.Encode(spTop.Select(r => Convert.ToDecimal(r["Cbm"])).ToArray())), true);
+
+        // 4. Running total (single line, end point labelled).
+        (function () {
+            const el = document.getElementById('cbmCumulativeChart');
+            if (!el) return;
+            const data = @Html.Raw(Json.Encode(cumulative));
+            new Chart(el.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: periodLabels,
+                    datasets: [{
+                        label: 'Running total',
+                        data: data,
+                        borderColor: PALETTE[0],
+                        backgroundColor: 'rgba(42, 120, 214, 0.10)',
+                        fill: true,
+                        borderWidth: 2,
+                        tension: 0.25,
+                        pointRadius: (ctx) => ctx.dataIndex === data.length - 1 ? 4 : 0,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: PALETTE[0],
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 22, right: 36 } },
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: (ctx) => 'Running total: ' + fmt2(ctx.parsed.y) + ' CBM' } },
+                        datalabels: {
+                            display: (ctx) => ctx.dataIndex === data.length - 1,
+                            anchor: 'end', align: 'left', offset: 8,
+                            font: { size: 11, weight: 'bold' }, color: INK,
+                            formatter: fmt
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { beginAtZero: true, grid: { color: GRID }, ticks: { callback: (v) => fmt(v) } }
+                    }
+                }
+            });
+        })();
+
+        $('#customerTable').DataTable({ pageLength: 15, order: [[2, 'desc']] });
+    });
+    </script>
+    <script>
+        // Carry the current filters (query string) across the sidebar module links.
+        document.querySelectorAll('.nav-group .nav-link').forEach(function (a) { a.search = window.location.search; });
+    </script>
+</body>
+</html>

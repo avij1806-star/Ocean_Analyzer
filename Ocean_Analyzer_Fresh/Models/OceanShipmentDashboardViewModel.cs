@@ -44,5 +44,17 @@ namespace Ocean_Analyzer_Fresh.Models
         public DataTable CustomerSummaryData { get; set; } = new DataTable();
 
         public DataTable OperatorFinancialData { get; set; } = new DataTable();
+
+        // CBM (cubic metre) volume analysis
+        public decimal TotalCbm { get; set; }
+        public int ShipmentsWithCbm { get; set; }
+        public string CbmPeriodLabel { get; set; } // "Day" or "Month"
+        public DataTable CbmByCompany { get; set; } = new DataTable();
+        public DataTable CbmByCustomer { get; set; } = new DataTable();
+        public DataTable CbmBySalesPerson { get; set; } = new DataTable();
+        public DataTable CbmByPeriod { get; set; } = new DataTable();
+        public DataTable CbmBySalesPersonPeriod { get; set; } = new DataTable();
+        public DataTable CbmByCompanyPeriod { get; set; } = new DataTable();
+        public DataTable CbmByType { get; set; } = new DataTable();
     }
 }
