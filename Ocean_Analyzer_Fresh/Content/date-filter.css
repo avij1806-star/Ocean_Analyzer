@@ -223,17 +223,27 @@
         text-decoration: underline;
     }
 
-/* Apply button while the bar matches what the page shows; it turns btn-primary once something changes. */
-.btn.btn-applied {
-    background: var(--color-surface-offset);
-    border-color: var(--color-border);
+/* Filters apply on change; while the page reloads the bar dims and shows "Updating…". */
+.filter-status {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
     color: var(--color-text-muted);
 }
 
-    .btn.btn-applied:hover {
-        background: var(--color-border);
-        color: var(--color-text);
-    }
+.filters-row.is-updating .filter-status {
+    display: inline-flex;
+}
+
+.filters-row.is-updating .filter-reset {
+    display: none;
+}
+
+.filters-row.is-updating .filter-field {
+    opacity: 0.6;
+    pointer-events: none;
+}
 
 /* ---- Applied date range, pinned to the bottom of the sidebar (Views/Shared/_DateRangeLabel.cshtml) ---- */
 

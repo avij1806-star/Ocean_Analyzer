@@ -1,5 +1,6 @@
 ﻿// Shared behaviour for the dashboard filter bar: the date range field (Views/Shared/_DateFilter.cshtml)
-// with quick presets and From/To validation, plus the Reset link and grey/blue Apply button state.
+// with quick presets and From/To validation, plus the Reset link. Filters apply as soon as they change:
+// dropdowns and switches at once, the date range when its popover closes.
 (function () {
     var BASIS_HELP = {
         ets: 'Estimated Time of Sailing: when the vessel leaves the port of loading.',
@@ -39,6 +40,13 @@
         var parts = [];
         new FormData(form).forEach(function (value, key) { parts.push(key + '=' + value); });
         return parts.join('&');
+    }
+
+    // Reload the page with the form's filters, unless they are what the page already shows.
+    function applyFilters(form) {
+        if (form.classList.contains('is-updating') || formState(form) === form.getAttribute('data-applied')) return;
+        form.classList.add('is-updating');
+        form.submit();
     }
 
     function initDateFilter(group) {
@@ -90,11 +98,23 @@
             if (active) active.focus();
         }
 
+        // Closing the popover applies the chosen range; an invalid range keeps it open instead.
         function close(returnFocus) {
             if (popover.hidden) return;
+            if (!validate()) { from.focus(); return; }
             popover.hidden = true;
             trigger.setAttribute('aria-expanded', 'false');
             if (returnFocus) trigger.focus();
+            applyFilters(form);
+        }
+
+        // Escape abandons the edit: put back the dates and basis the page is showing.
+        function cancel() {
+            from.value = from.defaultValue;
+            to.value = to.defaultValue;
+            Array.prototype.forEach.call(group.querySelectorAll('input[name="dateType"]'), function (r) { r.checked = r.defaultChecked; });
+            refresh();
+            close(true);
         }
 
         trigger.addEventListener('click', function () {
@@ -107,7 +127,6 @@
                 from.value = iso(r[0]);
                 to.value = iso(r[1]);
                 refresh();
-                form.dispatchEvent(new Event('change'));
                 close(true);
             });
         });
@@ -116,10 +135,10 @@
         group.querySelector('[data-date-done]').addEventListener('click', function () { close(true); });
 
         popover.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') { e.preventDefault(); close(true); }
+            if (e.key === 'Escape') { e.preventDefault(); cancel(); }
         });
         document.addEventListener('mousedown', function (e) {
-            if (!group.contains(e.target)) close(false);
+            if (!popover.hidden && !group.contains(e.target)) close(false);
         });
 
         form.addEventListener('submit', function (e) {
@@ -134,10 +153,17 @@
     }
 
     function initFilterActions(form) {
-        var submit = form.querySelector('[type="submit"]');
+        var actions = form.querySelector('.filter-actions');
 
         // The date field shows its own inline error instead of the browser's min/max popup.
         form.noValidate = true;
+        form.setAttribute('data-applied', formState(form));
+
+        var status = document.createElement('span');
+        status.className = 'filter-status';
+        status.setAttribute('role', 'status');
+        status.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Updating…';
+        actions.appendChild(status);
 
         // Reset goes back to the page defaults (all records, month to date by ETS).
         if (window.location.search) {
@@ -145,26 +171,28 @@
             reset.className = 'btn btn-sm btn-link filter-reset';
             reset.href = window.location.pathname;
             reset.textContent = 'Reset';
-            submit.insertAdjacentElement('beforebegin', reset);
+            reset.addEventListener('click', function () { form.classList.add('is-updating'); });
+            actions.appendChild(reset);
         }
 
-        // Grey while the page shows the current filters, blue once there is something to apply.
-        var applied = formState(form);
-        function updateDirty() {
-            var dirty = formState(form) !== applied;
-            submit.classList.toggle('btn-primary', dirty);
-            submit.classList.toggle('btn-applied', !dirty);
-            submit.title = dirty ? 'Apply your filter changes' : 'These filters are applied';
-        }
-        form.addEventListener('input', updateDirty);
-        form.addEventListener('change', updateDirty);
-        updateDirty();
+        // Dropdowns and switches apply straight away. The date range applies when its popover closes.
+        // The timeout lets a page's own change handlers run first (e.g. clearing Customer when the company changes).
+        form.addEventListener('change', function (e) {
+            if (e.target.closest('[data-date-filter]')) return;
+            setTimeout(function () { applyFilters(form); }, 0);
+        });
     }
+
+    // Coming back with the browser's Back button can restore this page mid-update, showing filters
+    // that no longer match the results. Reload so the bar and the data agree again.
+    window.addEventListener('pageshow', function (e) {
+        if (e.persisted && document.querySelector('.filters-row.is-updating')) window.location.reload();
+    });
 
     document.addEventListener('DOMContentLoaded', function () {
         Array.prototype.forEach.call(document.querySelectorAll('[data-date-filter]'), function (group) {
-            initDateFilter(group);
             initFilterActions(group.closest('form'));
+            initDateFilter(group);
         });
     });
 })();

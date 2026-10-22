@@ -27,6 +27,10 @@ namespace Ocean_Analyzer_Fresh.Models
         public string ToDate { get; set; }
         public DateTime? DataAvailableSince { get; set; }
 
+        // Trends page only
+        public string Grain { get; set; }
+        public TrendsData Trends { get; set; }
+
         // Available Filter Options
         public List<string> AvailableStations { get; set; } = new List<string>();
         public List<string> AvailableFileStatuses { get; set; } = new List<string>();

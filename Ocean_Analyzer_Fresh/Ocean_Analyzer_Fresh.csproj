@@ -149,6 +149,7 @@
       <DependentUpon>Global.asax</DependentUpon>
     </Compile>
     <Compile Include="Models\OceanShipmentDashboardViewModel.cs" />
+    <Compile Include="Models\TrendsData.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
@@ -197,6 +198,7 @@
     <Content Include="Views\Dashboard\StationTradeLane.cshtml" />
     <Content Include="Views\Dashboard\SalesPersonPerformance.cshtml" />
     <Content Include="Views\Dashboard\CbmAnalysis.cshtml" />
+    <Content Include="Views\Dashboard\Trends.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="App_Data\" />
