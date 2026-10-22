@@ -1063,10 +1063,14 @@ namespace Ocean_Analyzer.Controllers
 
         // CBM volume from the "Chargeable Weight/Volume" text (e.g. "79.49 CBM"). CBF is converted
         // to CBM; any other unit counts as 0 so weights are never mixed into the volume total.
-        private const string CbmSql = @"(CASE
+        private const string CbmRawSql = @"(CASE
                 WHEN UPPER(TRIM(ChargeableWeightVolume)) LIKE '%CBM' THEN CAST(NULLIF(REPLACE(SUBSTRING_INDEX(TRIM(ChargeableWeightVolume), ' ', 1), ',', ''), '') AS DECIMAL(18,3))
                 WHEN UPPER(TRIM(ChargeableWeightVolume)) LIKE '%CBF' THEN CAST(NULLIF(REPLACE(SUBSTRING_INDEX(TRIM(ChargeableWeightVolume), ' ', 1), ',', ''), '') AS DECIMAL(18,3)) * 0.0283168
                 ELSE 0 END)";
+
+        // A single booking over 2,000 CBM is a data-entry error (weight typed as volume) and counts as 0,
+        // matching MaxBookingCbm on the Trends page.
+        private const string CbmSql = "(CASE WHEN " + CbmRawSql + " > 2000 THEN 0 ELSE " + CbmRawSql + " END)";
 
         private DataTable RunTable(MySqlConnection conn, string sql, List<MySqlParameter> cmdParams)
         {
